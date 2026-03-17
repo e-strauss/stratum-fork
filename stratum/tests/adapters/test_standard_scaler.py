@@ -21,6 +21,7 @@ class TestAdaperStandardScaler(unittest.TestCase):
             with config(rust_backend=True, debug_timing=True):
                 rusty = RustyStandardScaler()
                 rusty_out = rusty.fit_transform(x)
+            print(rusty_out)
             np.testing.assert_allclose(rusty_out, sk_out, rtol=1e-6, atol=1e-6)
 
     def test_rusty_scaler_sample_weight(self):

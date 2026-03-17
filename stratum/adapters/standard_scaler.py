@@ -1,4 +1,5 @@
 from __future__ import annotations
+import os
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler as _SKStandardScaler
@@ -8,6 +9,8 @@ from .._config import get_config
 from .. import _rust_backend as rb
 
 logger = logging.getLogger(__name__)
+
+MIN_BLOCK_LEN = 100000
 
 class NumpyStandardScaler(_SKStandardScaler):
     """Drop-in StandardScaler that uses numpy to compute the mean and scale."""
@@ -48,13 +51,35 @@ class RustyStandardScaler(_SKStandardScaler):
     """Drop-in StandardScaler that prefers the Rust fastpath where supported.
     """
 
-    def __init__(self, with_mean: bool = True, with_std: bool = True, copy: bool = True, **kwargs):
+    def __init__(self, with_mean: bool = True, with_std: bool = True, copy: bool = True, n_jobs: int = None, **kwargs):
         super().__init__(with_mean=with_mean, with_std=with_std, copy=copy)
         self._supported_params = (
             with_mean
             and with_std
             and copy
         )
+        cores = os.cpu_count()
+        if n_jobs is None:
+            self.n_jobs = cores
+        elif n_jobs > cores:
+            logger.warning(f"n_jobs {n_jobs} is greater than the number of cores {cores}, setting n_jobs to {cores}")
+            self.n_jobs = cores
+        else:
+            self.n_jobs = n_jobs
+
+    def decide_n_chunks(self, X):
+        blocks = max(1, X.shape[0] // MIN_BLOCK_LEN)
+        n_chunks = min(blocks, self.n_jobs)
+        logger.debug(f"Using {n_chunks} chunks for Rust standard_scale")
+        return n_chunks
+
+    def rust_standard_scale_fit(self, X):
+        n_chunks = self.decide_n_chunks(X)
+        return rb.standard_scale_fit(X, n_chunks=n_chunks)
+
+    def rust_standard_scale_transform(self, X, mean, scale):
+        n_chunks = self.decide_n_chunks(X)
+        return rb.standard_scale_transform(X, mean, scale, n_chunks=n_chunks)
 
     def fit(self, X, y=None, sample_weight=None,):
         X_arr = np.asarray(X, dtype=np.float32)
@@ -63,7 +88,7 @@ class RustyStandardScaler(_SKStandardScaler):
             logger.debug("Fallback to scikit for fit")
             print("fall1")
             return super().fit(X, y, sample_weight=sample_weight)
-        mean, scale = rb.standard_scale_fit(X_arr)
+        mean, scale = self.rust_standard_scale_fit(X_arr)
         self.mean_ = mean
         self.scale_ = scale
         return self
@@ -92,7 +117,7 @@ class RustyStandardScaler(_SKStandardScaler):
         t0 = rb.start_timing()
         try:
             logger.debug("Calling Rust standard_scale_transform")
-            out = rb.standard_scale_transform(X_arr, mean, scale)
+            out = self.rust_standard_scale_transform(X_arr, mean, scale)
         except Exception as e:
             # Never fail user code because of Rust; just fall back
             print(f"WARNING: Rust standard_scale failed, falling back. Error: {e}")
