@@ -538,15 +538,18 @@ def main() -> None:
         parser.error("At least one mode must be selected: --run_compare, --run_n_jobs, --run_parallel")
 
     if args.run_compare:
-        df_compare = run_compare_backends(
-            n_rows_list=args.n_rows,
-            n_cols_list=args.n_cols,
-            reps=args.reps,
-            seed=args.seed,
-        )
         csv_path = "standard_scaler_benchmark.csv"
-        df_compare.write_csv(csv_path)
-        print(f"Wrote compare benchmark results to {csv_path}")
+        if not args.plot_only:
+            df_compare = run_compare_backends(
+                n_rows_list=args.n_rows,
+                n_cols_list=args.n_cols,
+                reps=args.reps,
+                seed=args.seed,
+            )
+            df_compare.write_csv(csv_path)
+            print(f"Wrote compare benchmark results to {csv_path}")
+        else:
+            df_compare = pl.read_csv(csv_path)
         print(df_compare.show(limit=df_compare.shape[0]))
         if args.plot:
             plot_fit_transform(
@@ -557,16 +560,19 @@ def main() -> None:
             )
 
     if args.run_n_jobs:
-        df_n_jobs = run_n_jobs(
-            n_rows_list=args.n_rows,
-            n_cols_list=args.n_cols,
-            n_jobs_list=args.n_jobs,
-            reps=args.reps,
-            seed=args.seed,
-        )
         csv_path = "standard_scaler_n_jobs_benchmark.csv"
-        df_n_jobs.write_csv(csv_path)
-        print(f"Wrote n_jobs benchmark results to {csv_path}")
+        if not args.plot_only:
+            df_n_jobs = run_n_jobs(
+                n_rows_list=args.n_rows,
+                n_cols_list=args.n_cols,
+                n_jobs_list=args.n_jobs,
+                reps=args.reps,
+                seed=args.seed,
+            )
+            df_n_jobs.write_csv(csv_path)
+            print(f"Wrote n_jobs benchmark results to {csv_path}")
+        else:
+            df_n_jobs = pl.read_csv(csv_path)
         print(df_n_jobs.show(limit=df_n_jobs.shape[0]))
         if args.plot:
             plot_fit_transform(

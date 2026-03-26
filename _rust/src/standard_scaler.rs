@@ -4,6 +4,7 @@ use pyo3::prelude::*;
 use rayon::prelude::*;
 
 use crate::threads::get_thread_pool;
+use crate::util::{start_timing, print_timing};
 
 fn compute_standard_scale_fit(
     x: ndarray::ArrayView2<f32>,
