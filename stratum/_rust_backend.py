@@ -3,6 +3,8 @@ import os
 import time
 from . _config import get_config
 
+T0 = time.perf_counter()
+
 # Set the rust backend related config knobs
 def __getattr__(name):
     rc = get_config()
@@ -47,7 +49,7 @@ def start_timing():
 def print_timing(msg, start_time):
     if start_time is not None and __getattr__("DEBUG_TIMING"):
         end_time = time.perf_counter()
-        print(f"[python] {msg}: {(end_time - start_time):8.3f}s")
+        print(f"[python] [{(end_time- T0) * 1000:.1f}] {msg}: {(end_time - start_time) * 1000:.1f}ms")
 
 
 # pandas or polars series -> list (best-effort, minimal overhead)

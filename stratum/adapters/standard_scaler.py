@@ -10,7 +10,7 @@ from .. import _rust_backend as rb
 
 logger = logging.getLogger(__name__)
 
-MIN_BLOCK_LEN = 100000
+MIN_BLOCK_LEN = 10_000
 
 class NumpyStandardScaler(_SKStandardScaler):
     """Drop-in StandardScaler that uses numpy to compute the mean and scale."""
@@ -82,6 +82,7 @@ class RustyStandardScaler(_SKStandardScaler):
         return rb.standard_scale_transform(X, mean, scale, n_chunks=n_chunks)
 
     def fit(self, X, y=None, sample_weight=None,):
+        t0 = rb.start_timing()
         X_arr = np.asarray(X, dtype=np.float32)
         # Check Rust kernel availability
         if getattr(rb, "standard_scale_fit", None) is None or not self._supported_params or sample_weight is not None:
@@ -91,6 +92,7 @@ class RustyStandardScaler(_SKStandardScaler):
         mean, scale = self.rust_standard_scale_fit(X_arr)
         self.mean_ = mean
         self.scale_ = scale
+        rb.print_timing("standard_scale_fit", t0)
         return self
 
 
@@ -122,7 +124,7 @@ class RustyStandardScaler(_SKStandardScaler):
             # Never fail user code because of Rust; just fall back
             print(f"WARNING: Rust standard_scale failed, falling back. Error: {e}")
             return super().transform(X, copy=copy)
-        rb.print_timing("standard_scale", t0)
+        rb.print_timing("standard_scale_transform", t0)
         return out
 
     def fit_transform(self, X, y=None, **fit_params):

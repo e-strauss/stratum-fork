@@ -120,6 +120,7 @@ pub fn standard_scale_transform(
         let mut out = ndarray::Array2::<f32>::zeros((n_rows, n_cols));
         let pool = get_thread_pool();
         let chunk_size = (n_rows / n_chunks).max(1);
+        let t0 = start_timing();
         let mut do_scale = || {
             out.axis_chunks_iter_mut(Axis(0), chunk_size)
                 .into_par_iter()
@@ -139,6 +140,7 @@ pub fn standard_scale_transform(
             Some(p) => p.install(do_scale),
             None => do_scale(),
         }
+        print_timing("standard_scale_transform", t0);
         out
     });
 
