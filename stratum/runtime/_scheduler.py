@@ -87,15 +87,30 @@ class Scheduler:
         scoring_func, greater_is_better = get_scoring_func(scoring)
 
         x_data = self.pool.pin(split_op.inputs[0])
+        splits = []
         for i, (train_index, test_index) in enumerate(cv.split(x_data)):
+            train_key = ("__cv_split", "train", i)
+            test_key = ("__cv_split", "test", i)
+            splits.append((i, train_key, test_key))
+            self.pool.put(test_key, test_index)
+            self.pool.put(train_key, train_index)
+            self.log_memory_usage()
+        self.pool.unpin(split_op.inputs[0])
+
+        for i, train_ids_handle, test_ids_handle in splits:
             self.cv_id = i
             logger.debug(f"CV Fold Nr. {i + 1}")
 
-            split_op.indices = train_index
+            split_op.indices = self.pool.pin(train_ids_handle)
             self.compute(self.pos_split_op)
+            self.pool.unpin(train_ids_handle)
+            self.pool.remove(train_ids_handle)
             logger.debug("\n" + "="*100 + "\n" + "Training done for fold " + str(i+1) + "\n" + "="*100 + "\n")
-            split_op.indices = test_index
+
+            split_op.indices = self.pool.pin(test_ids_handle)
             df, y_test = self.compute(self.pos_split_op, mode="predict")
+            self.pool.unpin(test_ids_handle)
+            self.pool.remove(test_ids_handle)
             logger.debug("\n" + "="*100 + "\n" + "Predicting done for fold " + str(i+1) + "\n" + "="*100 + "\n")
             if return_predictions:
                 predictions.append(df)

@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
+import logging
 
 def _env_bool(name, default=False):
     val = os.getenv(name)
@@ -42,6 +43,7 @@ class _Flags:
     DEBUG: bool = False
     force_polars: bool = _env_bool("STRATUM_FORCE_POLARS", False)
     fast_dataops_convert: bool = True
+    buffer_pool_memory_budget: int = 0
 
 FLAGS = _Flags()
 
@@ -57,7 +59,8 @@ def set_config(rust_backend: bool | None = None,
     DEBUG: bool | None = None,
     force_polars: bool = False,
     cse: bool = True,
-    fast_dataops_convert: bool = True) -> None:
+    fast_dataops_convert: bool = True,
+    buffer_pool_memory_budget: int = 0) -> None:
     """Runtime toggles (synced env for Rust to read).
 
     Parameter:
@@ -126,7 +129,7 @@ def set_config(rust_backend: bool | None = None,
     FLAGS.cse = bool(cse)
     FLAGS.debug_graph = bool(debug_graph)
     FLAGS.open_graph = bool(open_graph)
-
+    FLAGS.buffer_pool_memory_budget = int(buffer_pool_memory_budget)
     #FIXME: This should be the default. No need to set it. Remove.
     FLAGS.fast_dataops_convert = bool(fast_dataops_convert)
 
@@ -147,6 +150,7 @@ def get_config() -> dict:
         "force_polars": FLAGS.force_polars,
         "cse": FLAGS.cse,
         "fast_dataops_convert": FLAGS.fast_dataops_convert,
+        "buffer_pool_memory_budget": FLAGS.buffer_pool_memory_budget,
     }
 
 @contextmanager
@@ -154,6 +158,11 @@ def config(**kwargs):
     """Temporarily override runtime config inside a context."""
     original = get_config()
     set_config(**kwargs)
+    if kwargs.get("DEBUG", False):
+        # set for this module stratum only
+        print("DEBUG MODE ENABLED")
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger("stratum").setLevel(logging.DEBUG)
     try:
         yield
     finally:

@@ -96,7 +96,11 @@ benchmarks/**/input/
 *.csv
 *.pdf
 *.ipynb
+*.npy
 
 # coding agents
 .cursor
 .claude
+
+# buffer pool spill directory
+**/.stratum/
