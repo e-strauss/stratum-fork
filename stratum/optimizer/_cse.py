@@ -1,5 +1,5 @@
 from skrub import DataOp
-from ._op_comparison import update_data_op, hash_data_op, equals_data_op
+from stratum.utils._dataop_utils import update_data_op, hash_data_op, equals_data_op
 import logging
 
 

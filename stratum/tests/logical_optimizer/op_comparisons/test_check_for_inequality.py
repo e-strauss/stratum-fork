@@ -4,7 +4,7 @@ from sklearn.preprocessing import StandardScaler
 from skrub import TableVectorizer
 
 import stratum as st
-from stratum.optimizer._op_comparison import equals_data_op
+from stratum.utils._dataop_utils import equals_data_op
 import pandas as pd
 
 # dummy function
