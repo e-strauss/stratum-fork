@@ -15,7 +15,7 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
-file_path = "input/price_paid_records_100K.csv" if test else "input/price_paid_records.csv"
+file_path = "input/price_paid_records_10K.csv" if test else "input/price_paid_records.csv"
 df = skrub.as_data_op(file_path).skb.apply_func(pd.read_csv).skb.subsample(n=1000)
 print(df.columns.skb.preview())
 df = df.rename(columns={"Town/City": "Town"}, inplace=False)
@@ -90,30 +90,27 @@ def pre_process_2(X):
     X_enc = X.skb.apply(skrub.TableVectorizer())
     return X_enc
 
-X_1 = pre_process_1(X,y)
-X_2 = pre_process_2(X)
-X_enc = skrub.choose_from({
-    "1": X_1, 
-    "2": X_2
-    }, name="feat_eng").as_data_op()
-
 models = {
-    "Ridge": Ridge(random_state=42),
-    "XGBoost": XGBRegressor(random_state=42),
-    "LightGBM": LGBMRegressor(random_state=42),
-    "ElasticNet": ElasticNet(random_state=42),
+    "1_Ridge": (pre_process_1(X,y), Ridge(random_state=42)),
+    "2_Ridge": (pre_process_2(X), Ridge(random_state=42)),
+    "1_XGBoost": (pre_process_1(X,y), XGBRegressor(random_state=42)),
+    "2_XGBoost": (pre_process_2(X), XGBRegressor(random_state=42)),
+    "1_LightGBM": (pre_process_1(X,y), LGBMRegressor(random_state=42)),
+    "2_LightGBM": (pre_process_2(X), LGBMRegressor(random_state=42)),
+    "1_ElasticNet": (pre_process_1(X,y), ElasticNet(random_state=42)),
+    "2_ElasticNet": (pre_process_2(X), ElasticNet(random_state=42)),
 }
-preds = {k: X_enc.skb.apply(model, y=y) for k,model in models.items()}
+preds = {k: X_enc.skb.apply(model, y=y) for k,(X_enc, model) in models.items()}
 preds = skrub.choose_from(preds, name="models").as_data_op()
-preds = preds.skb.apply_func(lambda a, m: (a, print(m))[0], skrub.eval_mode())
-
 # play with cvs
-cv = 3
+cv = 1
 cv = ShuffleSplit(n_splits=1,test_size=0.2,random_state=42) if cv == 1 else KFold(n_splits=cv, shuffle=True, random_state=42)
 scorer = make_scorer(r2_score)
-preds.skb.draw_graph().open()
+with open("graphs/skrub_input.svg", "wb") as f:
+    f.write(preds.skb.draw_graph().svg)
+exit()
 t0 = perf_counter()
-with skrub.config(scheduler=True, stats=20, rust_backend=True, DEBUG=True):
+with skrub.config(scheduler=True, stats=20, rust_backend=True, DEBUG=True, debug_graph=True):
     search_stratum = preds.skb.make_grid_search(cv=cv, n_jobs=1, fitted=True, scoring=scorer)
 t1 = perf_counter()
 print("="*80)
