@@ -106,9 +106,9 @@ preds = skrub.choose_from(preds, name="models").as_data_op()
 cv = 1
 cv = ShuffleSplit(n_splits=1,test_size=0.2,random_state=42) if cv == 1 else KFold(n_splits=cv, shuffle=True, random_state=42)
 scorer = make_scorer(r2_score)
-with open("graphs/skrub_input.svg", "wb") as f:
-    f.write(preds.skb.draw_graph().svg)
-exit()
+# with open("graphs/skrub_input.svg", "wb") as f:
+#     f.write(preds.skb.draw_graph().svg)
+# exit()
 t0 = perf_counter()
 with skrub.config(scheduler=True, stats=20, rust_backend=True, DEBUG=True, debug_graph=True):
     search_stratum = preds.skb.make_grid_search(cv=cv, n_jobs=1, fitted=True, scoring=scorer)

@@ -2,7 +2,7 @@ from typing import Iterable
 from sklearn.base import BaseEstimator
 from skrub._data_ops import DataOp
 from skrub._data_ops._choosing import Choice
-from skrub._data_ops._data_ops import Call, GetItem, CallMethod, GetAttr, Apply, Value, BinOp
+from skrub._data_ops._data_ops import Call, GetItem, CallMethod, GetAttr, Apply, Value, BinOp, Concat
 from skrub.selectors._base import All
 
 def equals_data_op(op1: DataOp, op2: DataOp):
@@ -60,6 +60,10 @@ def equals_skrub_impl(impl1, impl2):
             if impl1.op == impl2.op:
                 return _stable_id(impl1.left) == _stable_id(impl2.left) and _stable_id(impl1.right) == _stable_id(
                     impl2.right)
+        elif isinstance(impl1, Concat):
+            # op1 = col1.skb.concat(col2, axis=1)
+            # op2 = col1.skb.concat(col2, axis=1)
+            return _stable_id(impl1.first) == _stable_id(impl2.first) and _stable_id(impl1.others) == _stable_id(impl2.others)
 
     return False
 
@@ -110,7 +114,7 @@ def hash_skrub_impl(impl) -> int:
     elif isinstance(impl, CallMethod):
         # op = col.apply(my_func, arg1, arg2)
         arg_ids = frozenset(_stable_id(arg) for arg in impl.args)
-        kwarg_ids = frozenset(id(kwarg) for kwarg in impl.kwargs.values())
+        kwarg_ids = frozenset(_stable_id(kwarg) for kwarg in impl.kwargs.values())
         return hash((t, id(impl.obj), impl.method_name, arg_ids, kwarg_ids))
 
     elif isinstance(impl, Apply):
@@ -129,7 +133,10 @@ def hash_skrub_impl(impl) -> int:
             return hash((t, id(impl.X), col_ids, est_type, est_params))
     elif isinstance(impl, BinOp):
         return hash((t, impl.op, _stable_id(impl.left), _stable_id(impl.right)))
-
+    elif isinstance(impl, Concat):
+        # op1 = col1.skb.concat(col2, axis=1)
+        # op2 = col1.skb.concat(col2, axis=1)
+        return hash((_stable_id(impl.first), _stable_id(impl.others)))
     else:
         # Fallback for unknown DataOp types
         return hash((t, id(impl)))
@@ -234,6 +241,14 @@ def update_data_op(op: DataOp, old_input: DataOp, new_input: DataOp):
         elif impl.right is old_input:
             impl.right = new_input
             return
+    elif isinstance(impl, Concat):
+        if impl.first is old_input:
+            impl.first = new_input
+            return
+        for i, other in enumerate(impl.others):
+            if other is old_input:
+                impl.others[i] = new_input
+                return
     raise Exception(f"Could not find old DataOp {old_input} during input update for {op}")
 
 
