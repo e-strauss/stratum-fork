@@ -20,8 +20,8 @@ from stratum.optimizer.ir._dataframe_ops import ConcatOp
 from stratum.optimizer.ir._ops import OperandRef, OutputType, Op
 
 
-def optimize(dag, conf=None):
-    linearized_dag, *_ = optimize_(dag, conf)
+def optimize(dag, conf=None, env=None):
+    linearized_dag, *_ = optimize_(dag, conf, env)
     return linearized_dag
 
 
@@ -36,10 +36,10 @@ def _inputs_for(op):
     return [in_op.intermediate for in_op in op.inputs]
 
 
-def run_op(op, *values, mode="fit_transform", environment=None):
+def run_op(op, *values, mode="fit_transform"):
     """Wire `values` as op.inputs (wrapped via `_inp`) and run `op.process`."""
     op.inputs = [_inp(v) for v in values]
-    return op.process(mode, environment or {}, _inputs_for(op))
+    return op.process(mode, _inputs_for(op))
 
 
 @contextmanager

@@ -77,16 +77,19 @@ def _debug_validate_dag(root: Op):
     if FLAGS.validate_dag:
         validate_dag(root)
 
-def optimize(dag_root: DataOp, config: OptConfig = None):
+def optimize(dag_root: DataOp, config: OptConfig = None, env: dict = None):
     """ Entry point for the logical optimizer. Takes a Skrub DataOp DAG, applies logical optimizations,
-    and returns an Op root node."""
+    and returns an Op root node.
+
+    ``env`` (variable name -> value), when supplied, lets the converter resolve
+    variables to compile-time constants (ValueOps) instead of VariableOps."""
     start = start_time()
     if config is None:
         config = OptConfig()
 
 
     # Convert to Op DAG
-    root = convert_to_ops(dag_root)
+    root = convert_to_ops(dag_root, env)
 
     # Apply CSE on the Op IR (post-conversion)
     if FLAGS.cse:
@@ -153,7 +156,7 @@ def extract_numeric_operators(root):
     return root
 
 
-def convert_to_ops(dag: DataOp) -> Op:
+def convert_to_ops(dag: DataOp, env: dict = None) -> Op:
     """Convert a Skrub DataOp DAG to stratum's logical IR (Op DAG).
 
     Single fused topological pass: ``as_op`` builds each op together with its
@@ -179,7 +182,7 @@ def convert_to_ops(dag: DataOp) -> Op:
             input_key = children.get(node_key, [])[0]
             ids_to_ops[id(skrub_op)] = ids_to_ops[id(nodes[input_key])]
             continue
-        ids_to_ops[id(skrub_op)] = as_op(skrub_op, ids_to_ops)
+        ids_to_ops[id(skrub_op)] = as_op(skrub_op, ids_to_ops, env)
 
     root = ids_to_ops[id(nodes[root_id])]
     log_time("conversion took", start)

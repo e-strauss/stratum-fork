@@ -25,7 +25,7 @@ class AggregateOp(Op):
     def __str__(self):
         return f"AggregateOp(by={self.grouping_attributes}, agg={self.aggregations}) [df]"
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj = inputs[0]
         grouping = inputs[self.grouping_attributes.k] if isinstance(self.grouping_attributes, OperandRef) else self.grouping_attributes
         aggregations = inputs[self.aggregations.k] if isinstance(self.aggregations, OperandRef) else self.aggregations
@@ -40,7 +40,7 @@ class GroupedDataframeOp(Op):
         self.ops = ops
         self.output_type = OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):  # pragma: no cover
+    def process(self, mode: str, inputs: list):  # pragma: no cover
         # TODO: GroupedDataframeOp is experimental and not integrated yet.
         # Needs proper refactoring to collect sub-op inputs from the pool.
         raise NotImplementedError("GroupedDataframeOp is not integrated yet.")

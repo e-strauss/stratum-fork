@@ -37,7 +37,7 @@ class MetadataOp(Op):
         self.kwargs = kwargs
         self.output_type = OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj = inputs[0]
         _args = _resolve_args(self.args, inputs)
         _kwargs = _resolve_kwargs(self.kwargs, inputs)
@@ -83,7 +83,7 @@ class ProjectionOp(Op):
         _kwargs = _resolve_kwargs(self.kwargs, inputs)
         return _obj, _args, _kwargs
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj, _args, _kwargs = self._extract_args_and_kwargs(inputs)
         if self.method is not None:
             if FLAGS.force_polars:
@@ -100,7 +100,7 @@ class DropOp(ProjectionOp):
         inputs: list[Op] = None, outputs: list[Op] = None, columns: list[str] = None):
         super().__init__(args=args, kwargs=kwargs, inputs=inputs, outputs=outputs, columns=columns)
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj, _args, _kwargs = self._extract_args_and_kwargs(inputs)
 
         if FLAGS.force_polars:
@@ -119,7 +119,7 @@ class ApplyUDFOp(ProjectionOp):
         inputs: list[Op] = None, outputs: list[Op] = None, columns: list[str] = None):
         super().__init__(args=args, kwargs=kwargs, inputs=inputs, outputs=outputs, columns=columns)
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj, _args, _kwargs = self._extract_args_and_kwargs(inputs)
 
         n_cols = None
@@ -153,7 +153,7 @@ class AssignOp(ProjectionOp):
         inputs: list[Op] = None, outputs: list[Op] = None, columns: list[str] = None):
         super().__init__(args=args, kwargs=kwargs, inputs=inputs, outputs=outputs, columns=columns)
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj, _args, _kwargs = self._extract_args_and_kwargs(inputs)
         if FLAGS.force_polars:
             checked_kwargs = {}
@@ -178,7 +178,7 @@ class DatetimeConversionOp(ProjectionOp):
         super().__init__(args=args, kwargs=dict(kwargs or {}), inputs=inputs,
                          outputs=outputs, columns=columns)
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         fmt = self.kwargs.get("format")
         strict = self.kwargs.get("errors", "raise") == "raise"
         if FLAGS.force_polars:
@@ -208,7 +208,7 @@ class StringMethodOp(ProjectionOp):
         super().__init__(method=method, args=args, kwargs=kwargs or {},
                          inputs=inputs, outputs=outputs, columns=columns)
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _obj, _args, _kwargs = self._extract_args_and_kwargs(inputs)
         name = self.method
         if FLAGS.force_polars:
@@ -241,7 +241,7 @@ class GetAttrProjectionOp(Op):
         attr_name = ".".join(self.attr_name)
         return f"GetAttrProjectionOp({attr_name}) [df]"
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         result = inputs[0]
         tmp = result
         if FLAGS.force_polars:

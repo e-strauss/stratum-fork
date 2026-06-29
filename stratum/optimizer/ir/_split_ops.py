@@ -13,7 +13,7 @@ class SplitOp(Op):
         self.output_type = OutputType.FRAME
         self.indices = None
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         # we need to handle both pandas and polars dfs
         x = inputs[0]
         y = inputs[1]
@@ -34,7 +34,7 @@ class SplitOutput(Op):
         self.is_x = is_x
         self.output_type = OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if self.is_x:
             return inputs[0][0]
         else:

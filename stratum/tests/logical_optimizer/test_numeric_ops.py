@@ -39,83 +39,83 @@ class TestNumericOps(unittest.TestCase):
 
     def test_process_log(self):
         op = NumericOp(inputs=[], outputs=None, func=np.log)
-        result = op.process("fit", {}, [np.array([1.0, np.e, np.e**2])])
+        result = op.process("fit", [np.array([1.0, np.e, np.e**2])])
         np.testing.assert_array_almost_equal(result, np.array([0.0, 1.0, 2.0]))
 
     def test_process_exp(self):
         op = NumericOp(inputs=[], outputs=None, func=np.exp)
-        result = op.process("fit", {}, [np.array([0.0, 1.0, 2.0])])
+        result = op.process("fit", [np.array([0.0, 1.0, 2.0])])
         np.testing.assert_array_almost_equal(result, np.array([1.0, np.e, np.e**2]))
 
     def test_process_log1p(self):
         op = NumericOp(inputs=[], outputs=None, func=np.log1p)
-        result = op.process("fit", {}, [np.array([1.0, np.e, np.e**2]) -1])
+        result = op.process("fit", [np.array([1.0, np.e, np.e**2]) -1])
         np.testing.assert_array_almost_equal(result, np.array([0.0, 1.0, 2.0]))
 
     def test_process_expm1(self):
         op = NumericOp(inputs=[], outputs=None, func=np.expm1)
-        result = op.process("fit", {}, [np.array([0.0, 1.0, 2.0])])
+        result = op.process("fit", [np.array([0.0, 1.0, 2.0])])
         np.testing.assert_array_almost_equal(result, np.array([1.0, np.e, np.e**2]) - 1,)
 
     def test_process_sqrt(self):
         op = NumericOp(inputs=[], outputs=None, func=np.sqrt)
-        result = op.process("fit", {}, [np.array([4.0, 9.0, 16.0])])
+        result = op.process("fit", [np.array([4.0, 9.0, 16.0])])
         np.testing.assert_array_almost_equal(result, np.array([2.0, 3.0, 4.0]))
 
     def test_process_abs(self):
         op = NumericOp(inputs=[], outputs=None, func=np.abs)
-        result = op.process("fit", {}, [np.array([-3.0, 0.0, 5.0])])
+        result = op.process("fit", [np.array([-3.0, 0.0, 5.0])])
         np.testing.assert_array_almost_equal(result, np.array([3.0, 0.0, 5.0]))
 
     def test_process_square(self):
         op = NumericOp(inputs=[], outputs=None, func=np.square)
-        result = op.process("fit", {}, [np.array([2.0, 3.0, 4.0])])
+        result = op.process("fit", [np.array([2.0, 3.0, 4.0])])
         np.testing.assert_array_almost_equal(result, np.array([4.0, 9.0, 16.0]))
 
     def test_unsupported_numeric_op(self):
         op = NumericOp(inputs=[], outputs=None, func=np.cos)
         op.type = "unsupported"
         with self.assertRaises(ValueError):
-            op.process("fit", {}, [])
+            op.process("fit", [])
 
     def test_process_add_var_const(self):
         op = NumericOp([], [], type=NumericOpType.ADD, constant=2.0, reversed=False)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([3.0, 4.0, 5.0]))
 
     def test_process_add_const_var(self):
         op = NumericOp([], [], type=NumericOpType.ADD, constant=10.0, reversed=True)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([11.0, 12.0, 13.0]))
 
     def test_process_subtract_var_const(self):
         op = NumericOp([], [], type=NumericOpType.SUBTRACT, constant=1.0, reversed=False)
-        result = op.process("fit", {}, [np.array([4.0, 5.0, 6.0])])
+        result = op.process("fit", [np.array([4.0, 5.0, 6.0])])
         np.testing.assert_array_almost_equal(result, np.array([3.0, 4.0, 5.0]))
 
     def test_process_subtract_const_var(self):
         op = NumericOp([], [], type=NumericOpType.SUBTRACT, constant=10.0, reversed=True)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([9.0, 8.0, 7.0]))
 
     def test_process_multiply_var_const(self):
         op = NumericOp([], [], type=NumericOpType.MULTIPLY, constant=3.0, reversed=False)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([3.0, 6.0, 9.0]))
 
     def test_process_multiply_const_var(self):
         op = NumericOp([], [], type=NumericOpType.MULTIPLY, constant=2.0, reversed=True)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([2.0, 4.0, 6.0]))
 
     def test_process_divide_var_const(self):
         op = NumericOp([], [], type=NumericOpType.DIVIDE, constant=2.0, reversed=False)
-        result = op.process("fit", {}, [np.array([2.0, 4.0, 6.0])])
+        result = op.process("fit", [np.array([2.0, 4.0, 6.0])])
         np.testing.assert_array_almost_equal(result, np.array([1.0, 2.0, 3.0]))
 
     def test_process_divide_const_var(self):
         op = NumericOp([], [], type=NumericOpType.DIVIDE, constant=12.0, reversed=True)
-        result = op.process("fit", {}, [np.array([2.0, 3.0, 4.0])])
+        result = op.process("fit", [np.array([2.0, 3.0, 4.0])])
         np.testing.assert_array_almost_equal(result, np.array([6.0, 4.0, 3.0]))
 
     def test_extract_add_var_const(self):
@@ -165,22 +165,22 @@ class TestNumericOps(unittest.TestCase):
     def test_process_add_var_var(self):
         op = NumericOp([], [], type=NumericOpType.ADD, opt_operand=OperandRef(1), reversed=False)
         self.assertIsNone(op.constant)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0])])
         np.testing.assert_array_almost_equal(result, np.array([5.0, 7.0, 9.0]))
 
     def test_process_subtract_var_var(self):
         op = NumericOp([], [], type=NumericOpType.SUBTRACT, opt_operand=OperandRef(1), reversed=False)
-        result = op.process("fit", {}, [np.array([10.0, 9.0, 8.0]), np.array([1.0, 2.0, 3.0])])
+        result = op.process("fit", [np.array([10.0, 9.0, 8.0]), np.array([1.0, 2.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([9.0, 7.0, 5.0]))
 
     def test_process_multiply_var_var(self):
         op = NumericOp([], [], type=NumericOpType.MULTIPLY, opt_operand=OperandRef(1), reversed=False)
-        result = op.process("fit", {}, [np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0])])
+        result = op.process("fit", [np.array([1.0, 2.0, 3.0]), np.array([4.0, 5.0, 6.0])])
         np.testing.assert_array_almost_equal(result, np.array([4.0, 10.0, 18.0]))
 
     def test_process_divide_var_var(self):
         op = NumericOp([], [], type=NumericOpType.DIVIDE, opt_operand=OperandRef(1), reversed=False)
-        result = op.process("fit", {}, [np.array([6.0, 8.0, 9.0]), np.array([2.0, 4.0, 3.0])])
+        result = op.process("fit", [np.array([6.0, 8.0, 9.0]), np.array([2.0, 4.0, 3.0])])
         np.testing.assert_array_almost_equal(result, np.array([3.0, 2.0, 3.0]))
 
     def _assert_var_var_extracted(self, out, numeric_type):
@@ -197,35 +197,35 @@ class TestNumericOps(unittest.TestCase):
         df2 = st.as_data_op(3)
         out, *_ = optimize(df1 + df2)
         op = self._assert_var_var_extracted(out, NumericOpType.ADD)
-        self.assertEqual(op.process("fit", {}, [2, 3]), 5)
+        self.assertEqual(op.process("fit", [2, 3]), 5)
 
     def test_extract_binop_subtract_var_var(self):
         df1 = st.as_data_op(10)
         df2 = st.as_data_op(3)
         out, *_ = optimize(df1 - df2)
         op = self._assert_var_var_extracted(out, NumericOpType.SUBTRACT)
-        self.assertEqual(op.process("fit", {}, [10, 3]), 7)
+        self.assertEqual(op.process("fit", [10, 3]), 7)
 
     def test_extract_binop_multiply_var_var(self):
         df1 = st.as_data_op(4)
         df2 = st.as_data_op(5)
         out, *_ = optimize(df1 * df2)
         op = self._assert_var_var_extracted(out, NumericOpType.MULTIPLY)
-        self.assertEqual(op.process("fit", {}, [4, 5]), 20)
+        self.assertEqual(op.process("fit", [4, 5]), 20)
 
     def test_extract_binop_divide_var_var(self):
         df1 = st.as_data_op(12)
         df2 = st.as_data_op(4)
         out, *_ = optimize(df1 / df2)
         op = self._assert_var_var_extracted(out, NumericOpType.DIVIDE)
-        self.assertEqual(op.process("fit", {}, [12, 4]), 3.0)
+        self.assertEqual(op.process("fit", [12, 4]), 3.0)
 
     def test_extract_add_produces_correct_result(self):
         df = st.as_data_op(5)
         t1 = df + 3
         out, *_ = optimize(t1)
         add_op = next(op for op in out if isinstance(op, NumericOp) and op.type == NumericOpType.ADD)
-        self.assertEqual(add_op.process("fit", {}, [5]), 8)
+        self.assertEqual(add_op.process("fit", [5]), 8)
 
     def test_extract_np_add_callop(self):
         """CallOp with np.add should be extracted to NumericOp ADD."""
@@ -248,42 +248,42 @@ class TestNumericOps(unittest.TestCase):
         df2 = st.as_data_op(3)
         out, *_ = optimize(df1.skb.apply_func(np.add, df2))
         op = self._assert_var_var_extracted(out, NumericOpType.ADD)
-        self.assertEqual(op.process("fit", {}, [2, 3]), 5)
+        self.assertEqual(op.process("fit", [2, 3]), 5)
 
     def test_extract_callop_subtract_var_var(self):
         df1 = st.as_data_op(5)
         df2 = st.as_data_op(3)
         out, *_ = optimize(df1.skb.apply_func(np.subtract, df2))
         op = self._assert_var_var_extracted(out, NumericOpType.SUBTRACT)
-        self.assertEqual(op.process("fit", {}, [5, 3]), 2)
+        self.assertEqual(op.process("fit", [5, 3]), 2)
 
     def test_extract_callop_multiply_var_var(self):
         df1 = st.as_data_op(2)
         df2 = st.as_data_op(3)
         out, *_ = optimize(df1.skb.apply_func(np.multiply, df2))
         op = self._assert_var_var_extracted(out, NumericOpType.MULTIPLY)
-        self.assertEqual(op.process("fit", {}, [2, 3]), 6)
+        self.assertEqual(op.process("fit", [2, 3]), 6)
 
     def test_extract_callop_divide_var_var(self):
         df1 = st.as_data_op(6)
         df2 = st.as_data_op(2)
         out, *_ = optimize(df1.skb.apply_func(np.divide, df2))
         op = self._assert_var_var_extracted(out, NumericOpType.DIVIDE)
-        self.assertEqual(op.process("fit", {}, [6, 2]), 3.0)
+        self.assertEqual(op.process("fit", [6, 2]), 3.0)
 
     def test_extract_subtract_const_var_produces_correct_result(self):
         df = st.as_data_op(3)
         t1 = 10 - df
         out, *_ = optimize(t1)
         op = next(o for o in out if isinstance(o, NumericOp) and o.type == NumericOpType.SUBTRACT)
-        self.assertEqual(op.process("fit", {}, [3]), 7)
+        self.assertEqual(op.process("fit", [3]), 7)
 
     def test_extract_divide_const_var_produces_correct_result(self):
         df = st.as_data_op(4)
         t1 = 12 / df
         out, *_ = optimize(t1)
         op = next(o for o in out if isinstance(o, NumericOp) and o.type == NumericOpType.DIVIDE)
-        self.assertEqual(op.process("fit", {}, [4]), 3.0)
+        self.assertEqual(op.process("fit", [4]), 3.0)
 
     def test_make_binary_numeric_op_raises_on_invalid_args(self):
         """make_binary_numeric_op must raise ValueError when neither or both args are placeholders."""
@@ -305,7 +305,7 @@ class TestNumericOps(unittest.TestCase):
         op.type = "fake_binary"
         with patch("stratum.optimizer.ir._numeric_ops._BINARY_TYPES", frozenset({"fake_binary"})):
             with self.assertRaises(ValueError):
-                op.process("fit", {}, [1.0])
+                op.process("fit", [1.0])
 
     def test_make_binary_numeric_op_raises_on_non_pair_args(self):
         op = CallOp(func=np.add, args=None)
@@ -320,4 +320,4 @@ class TestNumericOps(unittest.TestCase):
         self.assertEqual(result.constant, 10)
         self.assertTrue(result.reversed)
         self.assertIsNone(result.opt_operand)
-        self.assertEqual(result.process("fit", {}, [3]), 7)
+        self.assertEqual(result.process("fit", [3]), 7)

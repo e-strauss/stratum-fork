@@ -24,7 +24,7 @@ class DataSourceOp(Op):
         # ndarray, so an npy source is a MATRIX.
         self.output_type = OutputType.MATRIX if _format == "npy" else OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if self.data is not None:
             if FLAGS.force_polars:
                 return pl.DataFrame(self.data)

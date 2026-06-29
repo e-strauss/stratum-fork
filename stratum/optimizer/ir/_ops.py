@@ -311,7 +311,7 @@ class Op():
         new_op.was_cloned = True
         return new_op
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         raise NotImplementedError(f"Processing of {self.__class__.__name__} objects is not implemented yet. Please implement it.")
 
     def structure_key(self):
@@ -387,7 +387,7 @@ class ImplOp(Op):
 
         return SimpleNamespace(**{field: replace_dataop(getattr(self.skrub_impl, field)) for field in self.skrub_impl._fields})
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if hasattr(self.skrub_impl, "eval"):
             # DataOp with eval method have a fused implementation of the generator and the compute method
             # we need to iterate over the generator and replace the requested fields with correct inputs.
@@ -395,7 +395,9 @@ class ImplOp(Op):
             # order in which inputs are consumed.
             index = {}
             last_yield = None
-            gen = self.skrub_impl.eval(mode=mode, environment=environment)
+            # Variables are resolved to constants at compile time, so the skrub
+            # impl needs no environment -- its inputs arrive via the generator.
+            gen = self.skrub_impl.eval(mode=mode, environment={})
             while True:
                 try:
                     last_yield = gen.send(last_yield)
@@ -406,7 +408,7 @@ class ImplOp(Op):
                     last_yield = inputs[k]
         else:
             ns = self.replace_fields_with_values(inputs)
-            return self.skrub_impl.compute(ns, mode, environment)
+            return self.skrub_impl.compute(ns, mode, {})
 
 class VariableOp(Op):
     def __init__(self, name: str, value = None):
@@ -424,8 +426,12 @@ class VariableOp(Op):
         # Two `var("x")` references denote the same input regardless of identity.
         return (VariableOp, self.name)
 
-    def process(self, mode: str, environment: dict, inputs: list):
-        return environment[self.name]
+    def process(self, mode: str, inputs: list):
+        # Variables are resolved to constant ValueOps at compile time (see as_op
+        # with an `env`), so a VariableOp should never reach the runtime.
+        raise RuntimeError(
+            f"VariableOp({self.name!r}) reached the runtime; variables must be "
+            f"resolved to constants at compile time by passing `env` to optimize().")
 
 class BaseEstimatorOp(Op):
     fields = ["estimator", "y", "cols", "how", "allow_reject", "unsupervised", "kwargs", "param_refs"]
@@ -492,7 +498,7 @@ class BaseEstimatorOp(Op):
             self.parallelism
         )
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         # we use a separate function to process the estimator to allow reuse for multiprocessing
         task_data = self.extract_args_from_inputs(mode, inputs)
         process_task = self.get_process_task()
@@ -619,7 +625,7 @@ class ChoiceOp(Op):
         # A choice models alternatives; merging two choices is never valid.
         return None
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         results = [{"id" : name, "vals" : inputs[i]} for i, name in enumerate(self.make_outcome_names())]
         return results[0] if len(results) == 1 else results
 
@@ -633,7 +639,7 @@ class ValueOp(Op):
     def clone(self):
         raise ValueError(f"We should not clone ValueOp objects.")
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         return self.value
 
 class MethodCallOp(Op):
@@ -647,7 +653,7 @@ class MethodCallOp(Op):
         self.args = args
         self.kwargs = kwargs
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         # The object the method is called on is the implicit primary operand (index 0).
         _obj = inputs[0]
         _args = _resolve_args(self.args, inputs)
@@ -669,7 +675,7 @@ class CallOp(Op):
         self.args = args
         self.kwargs = kwargs
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         _args = _resolve_args(self.args, inputs)
         _kwargs = _resolve_kwargs(self.kwargs, inputs)
         return self.func(*_args, **_kwargs)
@@ -681,7 +687,7 @@ class GetAttrOp(Op):
         super().__init__(name=attr_name if attr_name else '?')
         self.attr_name = attr_name
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if self.output_type is OutputType.FRAME:
             result = inputs[0]
             for attr in self.attr_name:
@@ -701,7 +707,7 @@ class GetItemOp(Op):
         super().__init__(name=name)
 
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         # The container being indexed is the implicit primary operand (index 0).
         key = inputs[self.key.k] if isinstance(self.key, OperandRef) else self.key
         return inputs[0][key]
@@ -717,7 +723,7 @@ class BinOp(Op):
         self.right = right
 
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         left = inputs[self.left.k] if isinstance(self.left, OperandRef) else self.left
         right = inputs[self.right.k] if isinstance(self.right, OperandRef) else self.right
         return self.op(left, right)
@@ -738,13 +744,18 @@ def _bind_or_value(binder: OperandBinder, value):
     return binder.ref(value) if isinstance(value, DataOp) else value
 
 
-def as_op(data_op: DataOp, ids_to_ops: dict) -> Op:
+def as_op(data_op: DataOp, ids_to_ops: dict, env: dict | None = None) -> Op:
     """Convert a single skrub DataOp into an Op, building its de-duplicated
     ``inputs`` list and operand references in one canonical field walk.
 
     ``ids_to_ops`` maps ``id(DataOp) -> Op`` and must already contain every input
     of ``data_op`` (guaranteed by converting in topological order). Output edges
     are wired here too: each input op gets ``data_op``'s Op added to its outputs.
+
+    ``env`` is the runtime environment (variable name -> value), when known at
+    compile time. A ``Var`` whose name is bound in ``env`` is then resolved to a
+    constant ``ValueOp`` instead of a ``VariableOp``, so the scheduler needs no
+    environment to feed it at runtime.
     """
     impl = data_op._skrub_impl
     is_X = is_y = False
@@ -811,7 +822,12 @@ def as_op(data_op: DataOp, ids_to_ops: dict) -> Op:
         )
         return_op.inputs = binder.inputs
     elif isinstance(impl, Var):
-        return_op = VariableOp(name=impl.name, value=impl.value)
+        if env is not None and impl.name in env:
+            # Resolve the variable to a compile-time constant; the runtime no
+            # longer needs the environment to feed it.
+            return_op = ValueOp(env[impl.name])
+        else:
+            return_op = VariableOp(name=impl.name, value=impl.value)
     elif isinstance(impl, Concat):
         from stratum.optimizer.ir._dataframe_ops import ConcatOp
         first = _bind_or_value(binder, impl.first)

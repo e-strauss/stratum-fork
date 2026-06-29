@@ -142,11 +142,11 @@ class TestAggregateHelpers(unittest.TestCase):
 class TestAggregateRewrites(unittest.TestCase):
     """End-to-end: skrub `groupby(...).agg(...)` expressions fuse into AggregateOp."""
 
-    def _run_plan(self, ops, env=None):
+    def _run_plan(self, ops):
         pool = BufferPool()
         for op in ops:
             inputs = [pool.pin(key) for key in op.inputs]
-            pool.put(op, op.process("fit_transform", env or {}, inputs))
+            pool.put(op, op.process("fit_transform", inputs))
         return pool.pin(ops[-1])
 
     def setUp(self):
@@ -191,32 +191,33 @@ class TestAggregateRewrites(unittest.TestCase):
 
     def test_variable_grouping_key_uses_placeholder(self):
         data = st.as_data_op(self.df).groupby(st.var("key")).agg("sum")
-        ops = optimize(data, OptConfig(dataframe_ops=True))
+        ops = optimize(data, OptConfig(dataframe_ops=True), env={"key": "g"})
         agg_ops = [o for o in ops if isinstance(o, AggregateOp)]
         self.assertEqual(1, len(agg_ops))
         self.assertEqual(OperandRef(1), agg_ops[0].grouping_attributes)
-        result = self._run_plan(ops, env={"key": "g"})
+        result = self._run_plan(ops)
         pd.testing.assert_frame_equal(result, self.df.groupby("g").agg("sum"))
 
     def test_variable_aggregation_spec_uses_placeholder(self):
         data = st.as_data_op(self.df).groupby("g").agg(st.var("spec"))
-        ops = optimize(data, OptConfig(dataframe_ops=True))
+        ops = optimize(data, OptConfig(dataframe_ops=True), env={"spec": "sum"})
         agg_ops = [o for o in ops if isinstance(o, AggregateOp)]
         self.assertEqual(1, len(agg_ops))
         self.assertEqual(OperandRef(1), agg_ops[0].aggregations)
-        result = self._run_plan(ops, env={"spec": "sum"})
+        result = self._run_plan(ops)
         pd.testing.assert_frame_equal(result, self.df.groupby("g").agg("sum"))
 
     def test_both_grouping_key_and_agg_spec_are_variables(self):
         # Both operands are graph-fed; the aggregation OperandRef must be shifted
         # by the number of extra groupby inputs to avoid aliasing the key slot.
         data = st.as_data_op(self.df).groupby(st.var("key")).agg(st.var("spec"))
-        ops = optimize(data, OptConfig(dataframe_ops=True))
+        ops = optimize(data, OptConfig(dataframe_ops=True),
+                       env={"key": "g", "spec": "sum"})
         agg_ops = [o for o in ops if isinstance(o, AggregateOp)]
         self.assertEqual(1, len(agg_ops))
         self.assertEqual(OperandRef(1), agg_ops[0].grouping_attributes)
         self.assertEqual(OperandRef(2), agg_ops[0].aggregations)
-        result = self._run_plan(ops, env={"key": "g", "spec": "sum"})
+        result = self._run_plan(ops)
         pd.testing.assert_frame_equal(result, self.df.groupby("g").agg("sum"))
 
     def test_groupby_kwargs_preserved_after_fusion(self):

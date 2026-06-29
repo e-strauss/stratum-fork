@@ -26,7 +26,7 @@ class JoinOp(Op):
         self.suffixes = suffixes
         self.output_type = OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if len(inputs) != 2:
             raise ValueError(f"JoinOp expects exactly 2 inputs (left and right dataframes), got {len(inputs)}.")
         left_df = inputs[0]

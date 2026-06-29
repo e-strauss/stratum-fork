@@ -28,9 +28,8 @@ def get_scoring_func(scoring):
 class Scheduler:
     """Scheduler for executing pre-planned Op DAGs in linearized order."""
 
-    def __init__(self, print_heavy_hitters=False, env=None, t0=None):
+    def __init__(self, print_heavy_hitters=False, t0=None):
         self.mode = "fit_transform"
-        self.env = env if env else {}
         self.linearized_dag = None
         self.recompute_ops: list[Op] = []
         self.pos_split_op: int | None = None
@@ -122,7 +121,7 @@ class Scheduler:
             inputs = [self.pool.pin(in_op) for in_op in op.inputs]
 
             # 2. process operator
-            result = op.process(mode=self.mode, environment=self.env, inputs=inputs)
+            result = op.process(mode=self.mode, inputs=inputs)
 
             # 3. unpin inputs
             for in_op in op.inputs:
@@ -157,8 +156,8 @@ class Scheduler:
 
 class SequentialScheduler(Scheduler):
     def __init__(self, linearized_dag, split_pos, recompute_ops,
-                 print_heavy_hitters=False, env=None, t0=None):
-        super().__init__(print_heavy_hitters, env=env, t0=t0)
+                 print_heavy_hitters=False, t0=None):
+        super().__init__(print_heavy_hitters, t0=t0)
         self.linearized_dag = linearized_dag
         self.pos_split_op = split_pos
         self.recompute_ops = recompute_ops

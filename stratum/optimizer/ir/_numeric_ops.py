@@ -74,7 +74,7 @@ class NumericOp(Op):
         self.opt_operand = opt_operand
         self.reversed = reversed
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         if self.type == NumericOpType.GENERIC:
             return self.func(inputs[0], *self.args, **self.kwargs)
         elif self.type == NumericOpType.LOG:

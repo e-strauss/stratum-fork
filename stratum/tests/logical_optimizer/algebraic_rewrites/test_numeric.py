@@ -240,7 +240,7 @@ class TestCSE(unittest.TestCase):
 
         out, *_ = optimize(t2)
         self.assertEqual(len(out), 2)
-        self.assertEqual(out[1].process("fit", {}, [out[0].value]), 5)
+        self.assertEqual(out[1].process("fit", [out[0].value]), 5)
 
     def test_disable_eliminate_identity_operation(self):
         df = st.as_data_op(2)
@@ -253,9 +253,9 @@ class TestCSE(unittest.TestCase):
 
         out, *_ = optimize(t2, config=config)
         self.assertEqual(len(out), 3)
-        multiply_result = out[1].process("fit", {}, [out[0].value])
+        multiply_result = out[1].process("fit", [out[0].value])
         self.assertEqual(multiply_result, 2)
-        self.assertEqual(out[2].process("fit", {}, [multiply_result]), 5)
+        self.assertEqual(out[2].process("fit", [multiply_result]), 5)
 
     def test_eliminate_identity_operation_root_safe(self):
         value = st.as_data_op(2)
@@ -263,4 +263,4 @@ class TestCSE(unittest.TestCase):
 
         out, *_ = optimize(root)
         self.assertEqual(len(out), 1)
-        self.assertEqual(out[0].process("fit", {}, [out[0].value]), 2)
+        self.assertEqual(out[0].process("fit", [out[0].value]), 2)

@@ -67,7 +67,7 @@ class TestJoinRewrites(unittest.TestCase):
         pool = BufferPool()
         for op in ops:
             inputs = [pool.pin(key) for key in op.inputs]
-            pool.put(op, op.process("fit_transform", {}, inputs))
+            pool.put(op, op.process("fit_transform", inputs))
         return pool.pin(ops[-1])
 
     def test_merge_on_key_rewrites_and_executes(self):

@@ -196,7 +196,7 @@ class TestGetAttrProjectionOp(unittest.TestCase):
         with force_polars():
             s = pl.Series("dt", pd.to_datetime(dt_values))
             op = GetAttrProjectionOp(attr_name=attr_name, inputs=[_inp(s)], outputs=[])
-            return op.process("fit_transform", {}, _inputs_for(op))
+            return op.process("fit_transform", _inputs_for(op))
 
     def test_polars_year(self):
         result = self._run_polars(["2025-01-15", "2025-06-20"], ["dt", "year"])

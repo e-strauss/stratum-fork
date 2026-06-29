@@ -50,31 +50,31 @@ class TestDataSourceOp(unittest.TestCase):
         op = DataSourceOp(file_path="nofile", _format="orc",
                           read_args=(), read_kwargs={})
         with self.assertRaises(ValueError):
-            op.process("fit_transform", {}, [])
+            op.process("fit_transform", [])
 
     def test_numpy_read(self):
         with npy_file(np.array([1, 2, 3])) as path:
             op = DataSourceOp(file_path=path, _format="npy",
                               read_args=(), read_kwargs={})
-            result = op.process("fit_transform", {}, [])
+            result = op.process("fit_transform", [])
             np.testing.assert_array_equal(result, [1, 2, 3])
 
     def test_polars_from_dataframe(self):
         with force_polars():
             op = DataSourceOp(data=pd.DataFrame({"a": [1, 2]}))
-            self.assertIsInstance(op.process("fit_transform", {}, []), pl.DataFrame)
+            self.assertIsInstance(op.process("fit_transform", []), pl.DataFrame)
 
     def test_polars_from_read_csv(self):
         with csv_file(pd.DataFrame({"a": [1, 2]})) as path, force_polars():
             op = DataSourceOp(file_path=path, _format="csv",
                               read_args=(), read_kwargs={})
-            self.assertIsInstance(op.process("fit_transform", {}, []), pl.DataFrame)
+            self.assertIsInstance(op.process("fit_transform", []), pl.DataFrame)
 
     def test_pandas_read_parquet(self):
         with parquet_file(pd.DataFrame({"a": [1, 2], "b": [3, 4]})) as path:
             op = DataSourceOp(file_path=path, _format="parquet",
                               read_args=(), read_kwargs={})
-            result = op.process("fit_transform", {}, [])
+            result = op.process("fit_transform", [])
             self.assertIsInstance(result, pd.DataFrame)
             self.assertEqual([1, 2], result["a"].tolist())
 
@@ -82,30 +82,29 @@ class TestDataSourceOp(unittest.TestCase):
         with parquet_file(pd.DataFrame({"a": [1, 2]})) as path, force_polars():
             op = DataSourceOp(file_path=path, _format="parquet",
                               read_args=(), read_kwargs={})
-            self.assertIsInstance(op.process("fit_transform", {}, []), pl.DataFrame)
+            self.assertIsInstance(op.process("fit_transform", []), pl.DataFrame)
 
 
 class TestMakeReadOp(unittest.TestCase):
     """`make_read_op` and its end-to-end usage via the optimizer."""
 
-    def _optimize_read(self, data):
+    def _optimize_read(self, data, env=None):
         with st.config(fast_dataops_convert=True):
-            return optimize(data, OptConfig(dataframe_ops=True))
+            return optimize(data, OptConfig(dataframe_ops=True), env=env)
 
     def test_with_variable_input(self):
         with csv_file(pd.DataFrame({"col": [1, 2]})) as path:
             data = st.var("path").skb.apply_func(pd.read_csv)
-            ops = self._optimize_read(data)
+            # Resolve the path variable at compile time so the plan runs with no env.
+            ops = self._optimize_read(data, env={"path": path})
             self.assertIsInstance(ops[-1], DataSourceOp)
 
-            # Verify the resulting plan actually runs.
+            # Verify the resulting plan actually runs without a runtime environment.
             pool = BufferPool()
-            inputs0 = [pool.pin(key) for key in ops[0].inputs]
-            result0 = ops[0].process("fit_transform", {"path": path}, inputs0)
-            pool.put(ops[0], result0)
-            inputs1 = [pool.pin(key) for key in ops[1].inputs]
-            result1 = ops[1].process("fit_transform", {}, inputs1)
-            self.assertIsInstance(result1, pd.DataFrame)
+            for op in ops:
+                inputs = [pool.pin(key) for key in op.inputs]
+                pool.put(op, op.process("fit_transform", inputs))
+            self.assertIsInstance(pool.pin(ops[-1]), pd.DataFrame)
 
     def test_with_variable_kwarg(self):
         with csv_file(pd.DataFrame({"col": [1, 2]})) as path:

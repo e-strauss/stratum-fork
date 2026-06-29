@@ -39,7 +39,7 @@ class ConcatOp(Op):
         self.axis = axis
         self.output_type = OutputType.FRAME
 
-    def process(self, mode: str, environment: dict, inputs: list):
+    def process(self, mode: str, inputs: list):
         first = inputs[self.first.k] if isinstance(self.first, OperandRef) else self.first
         others = [inputs[o.k] if isinstance(o, OperandRef) else o for o in self.others]
         axis = inputs[self.axis.k] if isinstance(self.axis, OperandRef) else self.axis
