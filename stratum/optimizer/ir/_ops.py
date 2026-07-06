@@ -779,6 +779,39 @@ def _apply_estimator_op(impl: Apply, estimator, ids_to_ops: dict) -> Op:
     return op
 
 
+def _outcome_display(estimator) -> str:
+    """Human-readable label for an estimator outcome (None/'passthrough' -> PassThrough)."""
+    if estimator is None or (isinstance(estimator, str) and estimator == "passthrough"):
+        return PassThrough.__name__
+    return type(estimator).__name__
+
+
+def _flatten_estimator_choice(choice: Choice):
+    """Flatten an estimator ``Choice`` (possibly nesting further Choices) into leaves.
+
+    Yields ``(name_path, estimator)`` per leaf estimator, where ``name_path`` is a
+    list of ``(choice_name, value)`` pairs -- ChoiceOp's internal ``outcome_names``
+    representation -- so a nested choice collapses into a single flat ChoiceOp over
+    all leaf estimators, matching how skrub expands its parameter grid. An
+    intermediate (nested) choice only contributes to the path when its outcome is
+    named; the leaf always contributes its outcome name or estimator class name.
+    """
+    for i, outcome in enumerate(choice.outcomes):
+        label = choice.outcome_names[i] if choice.outcome_names is not None else None
+        if isinstance(outcome, Choice):
+            prefix = [(choice.name, label)] if label is not None else []
+            for sub_path, est in _flatten_estimator_choice(outcome):
+                yield prefix + sub_path, est
+        elif isinstance(outcome, DataOp):
+            raise NotImplementedError(
+                "Apply with a Choice estimator only supports concrete estimator "
+                "(or None/'passthrough') outcomes; DataOp outcomes are not "
+                f"supported (choice {choice.name!r}).")
+        else:
+            value = label if label is not None else _outcome_display(outcome)
+            yield [(choice.name, value)], outcome
+
+
 def as_op(data_op: DataOp, ids_to_ops: dict, env: dict | None = None) -> Op:
     """Convert a single skrub DataOp into an Op, building its de-duplicated
     ``inputs`` list and operand references in one canonical field walk.
@@ -842,25 +875,18 @@ def as_op(data_op: DataOp, ids_to_ops: dict, env: dict | None = None) -> Op:
         if isinstance(impl.estimator, Choice):
             # An estimator choice expands to a ChoiceOp over one estimator op per
             # outcome (mirroring Value(Choice) above), so choice unrolling and
-            # grid search work over the alternatives.
-            choice = impl.estimator
-            if any(isinstance(o, (DataOp, Choice)) for o in choice.outcomes):
-                raise NotImplementedError(
-                    "Apply with a Choice estimator only supports concrete estimator "
-                    "(or None/'passthrough') outcomes; DataOp or nested Choice "
-                    f"outcomes are not supported (choice {choice.name!r}).")
-            outcome_ops = [_apply_estimator_op(impl, o, ids_to_ops) for o in choice.outcomes]
+            # grid search work over the alternatives. Nested estimator choices are
+            # flattened into a single ChoiceOp over all leaf estimators; the leaf
+            # name paths use ChoiceOp's combi format so they concatenate correctly
+            # if choice_unrolling later combines this choice with a downstream one.
+            leaves = list(_flatten_estimator_choice(impl.estimator))
+            outcome_ops = [_apply_estimator_op(impl, est, ids_to_ops) for _, est in leaves]
             for est_op in outcome_ops:
                 # The trailing edge-wiring below only covers the returned op.
                 for in_op in est_op.inputs:
                     in_op.add_output(est_op)
-            # Unnamed estimator outcomes read better by class name (e.g.
-            # "scaler:StandardScaler") than as the generic Opt{i}.
-            outcome_names = choice.outcome_names
-            if outcome_names is None:
-                outcome_names = [op_.estimator.__class__.__name__ for op_ in outcome_ops]
-            return_op = ChoiceOp(outcome_names, len(choice.outcomes), choice.name)
-            return_op.inputs = outcome_ops
+            return_op = ChoiceOp(outcome_names=[path for path, _ in leaves],
+                                 append_choice_name=False, inputs=outcome_ops)
         else:
             return_op = _apply_estimator_op(impl, impl.estimator, ids_to_ops)
     elif isinstance(impl, Var):
