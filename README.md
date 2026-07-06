@@ -120,7 +120,24 @@ stratum/
 
 ## Developer Instructions
 
-#### Local Dev Install (Editable)
+### Running the Tests
+
+Install all extras and run the full test suite:
+
+```bash
+uv sync --all-extras
+pytest -v stratum/tests
+```
+
+Or, more concisely:
+
+```bash
+uv run pytest
+```
+
+---
+
+## Local Dev Install (Editable, without `uv`)
 
 ```bash
 maturin develop				# Debug mode
