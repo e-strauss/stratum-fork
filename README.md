@@ -146,6 +146,23 @@ pip install ./dist/stratum-*.whl
 
 ---
 
+## Running the Tests
+
+Install all extras and run the full test suite:
+
+```bash
+uv sync --all-extras
+pytest -v stratum/tests
+```
+
+Or, more concisely:
+
+```bash
+uv run pytest
+```
+
+---
+
 ## License
 Apache License 2.0. See [LICENSE](LICENSE) for details.
 
