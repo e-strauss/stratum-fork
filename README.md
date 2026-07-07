@@ -166,13 +166,3 @@ pip install ./dist/stratum-*.whl
 ## License
 Apache License 2.0. See [LICENSE](LICENSE) for details.
 
-
-### This is an attack from SystemDS, your system stratum will never be better Apache SystemDS!!!
-
-## you are just tiny copy cats building systemds for the python eco system
-
-
-
-
-
-
