@@ -1,6 +1,11 @@
 use ndarray::Axis;
 use numpy::{IntoPyArray, PyArray1, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
+use polars::prelude::{
+    ChunkApply, Column, DataFrame, DataType, Float32Chunked, IntoColumn, IntoSeries, PolarsResult,
+    Series,
+};
 use pyo3::prelude::*;
+use pyo3_polars::{error::PyPolarsErr, PyDataFrame};
 use rayon::prelude::*;
 
 use crate::threads::get_thread_pool;
@@ -147,5 +152,138 @@ pub fn standard_scale_transform(
 
     let py_out = out.into_pyarray(py).to_owned();
     Ok(Py::from(py_out))
+}
+
+// ---- Polars kernels: operate on a polars DataFrame directly and hand the ----
+// ---- frame back to Python without a numpy round-trip.                    ----
+
+// Borrow a column as Float32Chunked, casting only when needed.
+// `owned` keeps the cast result alive for the borrow.
+fn column_f32<'a>(col: &'a Column, owned: &'a mut Option<Series>) -> PolarsResult<&'a Float32Chunked> {
+    let s = col.as_materialized_series();
+    if matches!(s.dtype(), DataType::Float32) {
+        s.f32()
+    } else {
+        *owned = Some(s.cast(&DataType::Float32)?);
+        owned.as_ref().unwrap().f32()
+    }
+}
+
+// Per-column mean/scale with f64 accumulators (same numerics as the ndarray
+// kernel above). Nulls are skipped.
+fn column_stats_f32(col: &Column) -> PolarsResult<(f32, f32)> {
+    let mut owned = None;
+    let ca = column_f32(col, &mut owned)?;
+
+    let mut sum = 0.0f64;
+    let mut sum_sq = 0.0f64;
+    let n;
+    if ca.null_count() == 0 {
+        n = ca.len() as u64;
+        for arr in ca.downcast_iter() {
+            for &v in arr.values().as_slice() {
+                let v = v as f64;
+                sum += v;
+                sum_sq += v * v;
+            }
+        }
+    } else {
+        let mut valid = 0u64;
+        for v in ca.into_iter().flatten() {
+            let v = v as f64;
+            sum += v;
+            sum_sq += v * v;
+            valid += 1;
+        }
+        n = valid;
+    }
+
+    let nf = n as f64;
+    let mean = if n > 0 { sum / nf } else { 0.0 };
+    let var = if n > 0 { (sum_sq / nf) - mean * mean } else { 0.0 };
+    // Match sklearn: avoid division by zero by falling back to 1.0
+    let scale = if var > 0.0 { var.sqrt() } else { 1.0 };
+    Ok((mean as f32, scale as f32))
+}
+
+fn scale_column_f32(col: &Column, mean: f32, scale: f32) -> PolarsResult<Column> {
+    let mut owned = None;
+    let ca = column_f32(col, &mut owned)?;
+    // apply_values preserves the null mask; name is restored below
+    let scaled: Float32Chunked = ca.apply_values(|v| (v - mean) / scale);
+    let mut out = scaled.into_series();
+    out.rename(col.name().clone());
+    Ok(out.into_column())
+}
+
+#[pyfunction]
+#[pyo3(signature = (df,))]
+pub fn standard_scale_fit_polars(
+    py: Python<'_>,
+    df: PyDataFrame,
+) -> PyResult<(Py<PyArray1<f32>>, Py<PyArray1<f32>>)> {
+    let df: DataFrame = df.into();
+    let stats = py
+        .allow_threads(|| {
+            let pool = get_thread_pool();
+            // Columns are independent buffers, so parallelize across columns
+            let compute = || {
+                df.get_columns()
+                    .par_iter()
+                    .map(column_stats_f32)
+                    .collect::<PolarsResult<Vec<(f32, f32)>>>()
+            };
+            match pool {
+                Some(p) => p.install(compute),
+                None => compute(),
+            }
+        })
+        .map_err(PyPolarsErr::from)?;
+
+    let mean: Vec<f32> = stats.iter().map(|(m, _)| *m).collect();
+    let scale: Vec<f32> = stats.iter().map(|(_, s)| *s).collect();
+    let py_mean = mean.into_pyarray(py).to_owned();
+    let py_scale = scale.into_pyarray(py).to_owned();
+    Ok((Py::from(py_mean), Py::from(py_scale)))
+}
+
+#[pyfunction]
+#[pyo3(signature = (df, mean, scale))]
+pub fn standard_scale_transform_polars(
+    py: Python<'_>,
+    df: PyDataFrame,
+    mean: PyReadonlyArray1<f32>,
+    scale: PyReadonlyArray1<f32>,
+) -> PyResult<PyDataFrame> {
+    let df: DataFrame = df.into();
+    let mean = mean.as_slice()?;
+    let scale = scale.as_slice()?;
+    if mean.len() != df.width() || scale.len() != df.width() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "mean/scale length must match number of columns in the DataFrame",
+        ));
+    }
+
+    let out = py
+        .allow_threads(|| {
+            let pool = get_thread_pool();
+            let t0 = start_timing();
+            let compute = || {
+                df.get_columns()
+                    .par_iter()
+                    .enumerate()
+                    .map(|(j, col)| scale_column_f32(col, mean[j], scale[j]))
+                    .collect::<PolarsResult<Vec<Column>>>()
+            };
+            let cols = match pool {
+                Some(p) => p.install(compute),
+                None => compute(),
+            }?;
+            print_timing("standard_scale_transform_polars", t0);
+            DataFrame::new(cols)
+        })
+        .map_err(PyPolarsErr::from)?;
+
+    Ok(PyDataFrame(out))
 }
 

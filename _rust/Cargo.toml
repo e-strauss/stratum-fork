@@ -16,7 +16,7 @@ crate-type = ["cdylib"]
 [dependencies]
 # Python 3.10 ABI for wide wheel compatibility on 3.10.x
 pyo3 = { version = ">=0.24.2", features = ["extension-module", "abi3-py310"] }
-numpy = { version = ">=0.21,<0.25" }
+numpy = { version = "0.25" }
 ahash = "0.8.12"
 anyhow = "1.0.99"
 ndarray = { version = "0.16.1", features = ["rayon"] }
@@ -24,6 +24,10 @@ rand = "0.9.3"
 ndarray-linalg = { version = "0.17.0", features = ["intel-mkl-static"] }
 rayon = "1.11.0"
 once_cell = "1.21.3"
+# polars kernels: crate version must match what pyo3-polars was built against
+# (pyo3-polars 0.24 <-> polars 0.51 <-> pyo3 0.25)
+polars = { version = "0.51", default-features = false }
+pyo3-polars = "0.24"
 faer = { version = "0.23.2" }
 tar = "0.4.45"
 rustls-webpki = "0.103.13"

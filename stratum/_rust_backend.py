@@ -79,3 +79,5 @@ ohe_transform = getattr(native, "ohe_transform_csr", None) if native else None
 csr_to_dense = getattr(native, "csr_to_dense", None) if native else None
 standard_scale_fit = getattr(native, "standard_scale_fit", None) if native else None
 standard_scale_transform = getattr(native, "standard_scale_transform", None) if native else None
+standard_scale_fit_polars = getattr(native, "standard_scale_fit_polars", None) if native else None
+standard_scale_transform_polars = getattr(native, "standard_scale_transform_polars", None) if native else None

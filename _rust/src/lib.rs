@@ -668,6 +668,8 @@ fn _rust_backend_native(_py: Python<'_>, m: &Bound<PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(one_hot_encoder::csr_to_dense, m)?)?;
     m.add_function(wrap_pyfunction!(standard_scaler::standard_scale_fit, m)?)?;
     m.add_function(wrap_pyfunction!(standard_scaler::standard_scale_transform, m)?)?;
+    m.add_function(wrap_pyfunction!(standard_scaler::standard_scale_fit_polars, m)?)?;
+    m.add_function(wrap_pyfunction!(standard_scaler::standard_scale_transform_polars, m)?)?;
     m.add_function(wrap_pyfunction!(tfidf_fit_csr, m)?)?;
     m.add_function(wrap_pyfunction!(tfidf_transform_csr, m)?)?;
     Ok(())
