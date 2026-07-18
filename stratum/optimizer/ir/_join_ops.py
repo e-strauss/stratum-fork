@@ -5,6 +5,7 @@ from stratum.optimizer.ir._ops import OperandRef, OutputType, MethodCallOp, Op
 class JoinOp(Op):
     """Logical join. Pure config -- execution is provided by the physical impls
     in ``physical/_join_execs.py`` (Pandas/PolarsJoinOp), selected at plan time."""
+    logical_family = "Join"
     fields = ["how", "left_on", "right_on", "left_index", "right_index", "suffixes"]
 
     def __init__(

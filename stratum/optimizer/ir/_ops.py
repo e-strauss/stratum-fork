@@ -292,10 +292,13 @@ class BaseEstimatorOp(Op):
         raise NotImplementedError(f"get_process_task must be implemented in {self.__class__.__name__}")
 
 class EstimatorOp(BaseEstimatorOp):
+    logical_family = "Estimator"
+
     def get_process_task(self):
         return process_estimator_task
 
 class TransformerOp(BaseEstimatorOp):
+    logical_family = "Transformer"
     def get_process_task(self):
         return process_transformer_task
 
@@ -370,8 +373,9 @@ def process_transformer_task(task_data):
 
 
 class ChoiceOp(Op):
+    logical_family = "Choice"
     fields = ["outcome_names"]
-    
+
     def __init__(self, outcome_names: list[str] = None, n_outcomes: int = None, choice_name: str=None, append_choice_name = True, inputs: list = None):
         if inputs is None:
             inputs = []

@@ -10,6 +10,7 @@ class DataSourceOp(Op):
     (``ReadCSV``/``ReadParquet``/``InMemoryFrame``/``NumpyLoad`` in
     ``physical/_source_execs.py``), whose selected backend impl does the work.
     """
+    logical_family = "Source"
 
     def __init__(self, data: DataFrame = None, file_path: str = None, _format: str = None,
                  read_args: tuple | list = None, read_kwargs: dict = None, is_X=False, is_y=False, outputs: list[Op] = None, inputs: list[Op] = None):

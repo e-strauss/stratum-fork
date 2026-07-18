@@ -22,6 +22,7 @@ from stratum.optimizer.ir._ops import (MethodCallOp, Op, OperandRef, OutputType)
 
 class MapOp(Op):
     """Base for folded column-map operators."""
+    logical_family = "Map"
 
     def __init__(self, name: str, inputs: list[Op] = None, outputs: list[Op] = None):
         super().__init__(name=name, inputs=inputs, outputs=outputs)
@@ -41,7 +42,7 @@ class AssignMapOp(MapOp):
 
     def __init__(self, entries: dict[str, ColumnExpr],
                  inputs: list[Op] = None, outputs: list[Op] = None):
-        super().__init__(name=f"MAP(assign: {', '.join(entries)})",
+        super().__init__(name=f"assign: {', '.join(entries)}",
                          inputs=inputs, outputs=outputs)
         self.entries = entries
 

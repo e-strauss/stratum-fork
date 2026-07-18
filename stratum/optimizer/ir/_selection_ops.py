@@ -41,6 +41,7 @@ class SelectionOp(Op):
 
     Method-based kinds use ``args``/``kwargs``; ``MASK``/``QUERY`` use ``predicate``.
     """
+    logical_family = "Selection"
     fields = ["kind", "args", "kwargs", "predicate"]
 
     def __init__(self, kind: SelectionKind, args: tuple | list = None, kwargs: dict = None,
@@ -57,9 +58,10 @@ class SelectionOp(Op):
         self.output_type = OutputType.FRAME
 
     # No custom __str__: the base IRNode renders ``<class>(<name>) [df]`` from
-    # ``self.name`` (== the kind), so the plan display reflects the concrete
-    # physical impl the op was bound to (PandasQuerySelectionOp, ...) instead of
-    # a hardcoded "SelectionOp".
+    # ``self.name`` (== the kind). While logical, it shows the ``Selection``
+    # family; once lowered, ``_is_physical`` flips the class-name component to the
+    # bound impl (PandasQuerySelectionOp, ...), so the plan reflects the selected
+    # backend instead of a hardcoded name.
 
 
 def make_selection_op(op: MethodCallOp) -> SelectionOp:

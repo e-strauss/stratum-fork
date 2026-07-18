@@ -33,10 +33,13 @@ class ConcatOp(Op):
     """Logical frame concatenation. Pure config -- execution is provided by the
     physical impls in ``physical/_concat_execs.py`` (Pandas/PolarsConcatOp),
     selected at plan time."""
+    logical_family = "Concat"
     fields = ["first", "others", "axis"] # Add more if needed
 
     def __init__(self, first, others: list, axis):
-        super().__init__(name="CONCAT", is_X=False, is_y=False)
+        # No name: the "Concat" family label alone renders cleanly (avoids the
+        # redundant "Concat(CONCAT)").
+        super().__init__(name="", is_X=False, is_y=False)
         # first/others entries/axis are OperandRefs when graph-fed, else constants.
         self.first = first
         self.others = list(others)

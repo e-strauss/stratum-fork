@@ -47,6 +47,10 @@ class PhysicalOp(IRNode):
     #: replaced by a concrete impl before execution. Concrete ops set this False.
     is_abstract = False
 
+    #: Physical ops render as their concrete class name (the selected impl),
+    #: never as the logical family they inherit from. See ``IRNode._is_physical``.
+    _is_physical = True
+
     # --- Selector-facing API (mirrors PhysicalImpl's fields) -----------------
 
     @classmethod

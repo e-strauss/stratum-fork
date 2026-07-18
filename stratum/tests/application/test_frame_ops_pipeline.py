@@ -202,7 +202,7 @@ def test_query_selection_trains_end_to_end():
     scorer = make_scorer(r2_score)
     with csv_file(make_orders()) as path:
         preds = build_pipeline(path)
-        with st.config(scheduler=True, rust_backend=False, pandas_query=True, debug_graph=True, DEBUG=True, explain_linear_plan=True):
+        with st.config(scheduler=True, rust_backend=False, pandas_query=True, explain=("logical", "physical_impl")):
             search = preds.skb.make_grid_search(fitted=True, cv=2, scoring=scorer)
             assert search.results_ is not None
             assert len(search.results_) > 0

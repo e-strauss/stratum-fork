@@ -71,6 +71,7 @@ class MetadataOp(Op):
 
 
 class ProjectionOp(Op):
+    logical_family = "Projection"
     fields = ["func", "method", "args", "kwargs", "columns"]
 
     def __init__(self, func: Callable | None = None, method: str | None = None,
@@ -122,6 +123,7 @@ class ColumnSelectorOp(Op):
     Produced from ``skb.select(cols)``. Matches ``SelectCols`` semantics: the selector resolves against the schema at
     fit time and the *stored* column list is reused at predict time.
     """
+    logical_family = "Projection"
     fields = ["selector"]
 
     def __init__(self, selector, inputs: list[Op] = None, outputs: list[Op] = None):
@@ -153,6 +155,7 @@ class ColumnProjectionOp(Op):
     ``GetItemOp`` stays the fallback for masks, graph-fed keys, slices and
     positional indexing.
     """
+    logical_family = "Projection"
     fields = ["key"]
 
     def __init__(self, key, inputs: list[Op] = None, outputs: list[Op] = None):
@@ -213,6 +216,7 @@ class StringMethodOp(ProjectionOp):
 
 
 class GetAttrProjectionOp(Op):
+    logical_family = "Projection"
     fields = ["attr_name"]
 
     # NOTE: Polars and Pandas differ in semantics for some datetime attributes:
@@ -232,10 +236,6 @@ class GetAttrProjectionOp(Op):
         self.inputs = inputs
         self.outputs = outputs
         self.output_type = OutputType.FRAME
-
-    def __str__(self):
-        attr_name = ".".join(self.attr_name)
-        return f"GetAttrProjectionOp({attr_name}) [df]"
 
 
 def make_datetime_conversion_op(op: CallOp) -> DatetimeConversionOp:

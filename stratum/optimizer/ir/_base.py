@@ -203,6 +203,21 @@ class IRNode:
     subclasses, not here.
     """
 
+    #: Display label for a logical op: the semantic family (SELECT, PROJECT, ...)
+    #: or a stripped stratum-op name. When set, the plan shows this instead of the
+    #: concrete class name -- but only for logical instances (see ``_is_physical``).
+    #: Auto-generated skrub-compat wrappers leave this None and keep their class
+    #: name.
+    logical_family: str | None = None
+
+    #: Physical impls multiply-inherit from their logical family op (e.g.
+    #: ``PandasQuerySelectionOp(SelectionOp, PhysicalOp)``), so they would inherit
+    #: the family's ``logical_family``. ``PhysicalOp`` overrides this to True --
+    #: and sits ahead of ``IRNode`` in every impl's MRO -- so a lowered op falls
+    #: back to its concrete class name, keeping the operator-selection choice
+    #: visible in the plan.
+    _is_physical = False
+
     def __init__(self, inputs=None, outputs=None, name=None, is_X=False, is_y=False):
         self.name = name
         self.outputs = outputs if outputs is not None else []
@@ -215,7 +230,8 @@ class IRNode:
         self.remove_after: list[IRNode] = []
 
     def to_str_helper(self):
-        class_name = self.__class__.__name__
+        class_name = (self.__class__.__name__ if self._is_physical
+                      else self.logical_family or self.__class__.__name__)
         is_df = " [df]" if self.output_type is OutputType.FRAME else ""
         name = f"({self.name})" if self.name and len(self.name) > 0 else ""
         # truncate name if it is too long

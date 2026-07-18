@@ -13,20 +13,22 @@ class AggregateOp(Op):
     ``physical/_aggregation_execs.py`` (PandasAggregateOp; polars pending),
     selected at plan time.
     """
+    logical_family = "Aggregation"
     fields = ["grouping_attributes", "aggregations", "groupby_kwargs"]
 
     def __init__(self, grouping_attributes: str | list[str] | OperandRef,
                  aggregations: str | list[str] | dict | OperandRef,
                  groupby_kwargs: dict | None = None,
                  inputs: list[Op] | None = None, outputs: list[Op] | None = None):
-        super().__init__(name="", inputs=inputs, outputs=outputs)
+        # by/agg go in the name so the base helper renders them for both the
+        # logical family ("Aggregation(by=..., agg=...)") and the bound physical
+        # impl ("PandasAggregateOp(by=..., agg=...)").
+        super().__init__(name=f"by={grouping_attributes}, agg={aggregations}",
+                         inputs=inputs, outputs=outputs)
         self.grouping_attributes = grouping_attributes
         self.aggregations = aggregations
         self.groupby_kwargs = groupby_kwargs or {}
         self.output_type = OutputType.FRAME
-
-    def __str__(self):
-        return f"AggregateOp(by={self.grouping_attributes}, agg={self.aggregations}) [df]"
 
 
 class GroupedDataframeOp(Op):

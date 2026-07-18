@@ -70,8 +70,18 @@ def _debug_show_graph(root: Op, name: str):
         show_graph(root, name)
 
 def _debug_explain_linear_plan(name: str, linearized_dag: list, split_pos: int | None):
-    if FLAGS.explain_linear_plan:
+    """Print the final executable plan (post implementation selection)."""
+    if "physical_impl" in FLAGS.explain:
         explain_linear_plan(name, linearized_dag, split_pos)
+
+
+def _debug_explain_dag(level: str, root: Op):
+    """Print a topological plan for a non-linearized IR level (logical/physical).
+
+    These levels have no split/CV structure yet, so the plan is a flat
+    topological listing (``split_pos=None``)."""
+    if level in FLAGS.explain:
+        explain_linear_plan(level, list(topological_iterator(root)), split_pos=None)
 
 
 def _debug_validate_dag(root: Op):
@@ -104,6 +114,7 @@ def optimize(dag_root: DataOp, config: OptConfig = None, env: dict = None):
 
     # Phase 1: logical optimization (backend-agnostic).
     root = logical_optimize(dag_root, config, env)
+    _debug_explain_dag("logical", root)
 
     # Phases 2 & 3 read the config that drives operator selection once, here, so
     # execution carries no operator-selection control flow.
@@ -113,6 +124,7 @@ def optimize(dag_root: DataOp, config: OptConfig = None, env: dict = None):
     root = lower_to_physical(root, ctx)
     _debug_validate_dag(root)  # operand refs after lowering
     _debug_show_graph(root, "lowered")
+    _debug_explain_dag("physical", root)
 
     # Phase 3: physical optimization (implementation selection + linearization).
     result = physical_optimize(root, ctx)
@@ -176,7 +188,7 @@ def physical_optimize(root: Op, ctx: PlanContext, registry=None):
     pinned_ops = compute_pinned_ops(linearized_dag, split_pos, flagged_ops)
     plan_input_removals(linearized_dag, pinned_ops)
 
-    _debug_explain_linear_plan("explain_linear_plan", linearized_dag, split_pos)
+    _debug_explain_linear_plan("physical_impl", linearized_dag, split_pos)
     return linearized_dag, split_pos, flagged_ops
 
 
