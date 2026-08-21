@@ -72,9 +72,8 @@ class MetadataOp(Op):
         self.output_type = OutputType.FRAME
 
     def propagate_output_schema(self):
-        """Currently only ``rename`` is modelled: it remaps the columns named in
-        the ``columns`` (or axis=1 ``mapper``) mapping and leaves the rest. Any
-        other metadata op falls back to the unknown schema."""
+        """Only ``rename`` is modelled: it remaps the columns named in ``columns``
+        (or the axis=1 ``mapper``) and leaves the rest."""
         kwargs = self.kwargs or {}
         mapping = None
         if self.func == "rename":
@@ -193,9 +192,8 @@ class ColumnProjectionOp(Op):
                             else OutputType.FRAME)
 
     def propagate_output_schema(self):
-        """A literal column projection selects a sub-schema, in the requested
-        order. Unknown if a requested column isn't in the input schema."""
-        self.output_schema = _schema.select_columns(self.inputs[0].output_schema, self.key)
+        """A literal projection restricts the schema to its key, in order."""
+        self.output_schema = _schema.project_columns(self.inputs[0].output_schema, self.key)
 
 
 def make_column_projection_op(op) -> ColumnProjectionOp:
@@ -219,9 +217,8 @@ class AssignOp(ProjectionOp):
         super().__init__(args=args, kwargs=kwargs, inputs=inputs, outputs=outputs, columns=columns)
 
     def propagate_output_schema(self):
-        """`df.assign(a=..., b=...)` adds/overwrites the kwargs-named columns.
-        Their dtype depends on the assigned expression, so we record them as
-        Unknown-typed while keeping the rest of the input schema intact."""
+        """``df.assign(a=..., b=...)`` adds/overwrites the kwargs-named columns,
+        Unknown-typed since the dtype follows the assigned expression."""
         new_columns = list(self.kwargs.keys()) if self.kwargs else []
         self.output_schema = _schema.add_columns(self.inputs[0].output_schema, new_columns)
 
@@ -233,8 +230,23 @@ class DatetimeConversionOp(ProjectionOp):
                          outputs=outputs, columns=columns)
 
     def propagate_output_schema(self):
-        # to_datetime keeps the column names and turns each into a Datetime column.
-        self.output_schema = _schema.retype_columns(self.inputs[0].output_schema, pl.Datetime("us"))
+        """Converting a column keeps its name and leaves the dtype Unknown.
+
+        The Unknown dtype is not just imprecision: the result is a Datetime whose
+        *unit* is the backend's (pandas gives ``datetime64[ns]``, polars
+        microseconds), the backend is only fixed during physical planning, and
+        ``pl.Schema`` rejects a unit-less ``pl.Datetime``, so "Datetime of unknown
+        unit" has no representation here.
+
+        Only a column operand is column-preserving. Given a *frame*,
+        ``pd.to_datetime`` is the assembly form: it reads year/month/day columns
+        and fans them in to one unnamed Series (any other frame raises), so the
+        input's names are not the output's.
+        """
+        if self.inputs[0].output_type is not OutputType.SERIES:
+            self.output_schema = None
+            return
+        self.output_schema = _schema.cast_columns(self.inputs[0].output_schema)
 
 
 class StringMethodOp(ProjectionOp):
@@ -256,6 +268,34 @@ class StringMethodOp(ProjectionOp):
                  inputs: list[Op] = None, outputs: list[Op] = None, columns: list[str] = None):
         super().__init__(method=method, args=args, kwargs=kwargs or {},
                          inputs=inputs, outputs=outputs, columns=columns)
+
+    # `.str` methods that map one input element to one output element, so the call
+    # keeps its operand's columns and only changes their dtype. Extraction fuses
+    # *any* `.str.<method>` into this op, so this must be an allow-list: `extract`,
+    # `extractall`, `get_dummies`, `partition` and `rpartition` return a frame of
+    # new columns, `split`/`rsplit` do the same under `expand=True`, and `cat()`
+    # collapses the column to a single string. Every member below was checked to
+    # return a Series.
+    ONE_TO_ONE_METHODS = frozenset({
+        # fused into polars expressions, see STR_POLARS_METHODS
+        "count", "lower", "upper", "startswith", "endswith", "len",
+        "strip", "lstrip", "rstrip",
+        # scalar on the pandas compatibility path
+        "capitalize", "casefold", "contains", "find", "fullmatch", "match",
+        "pad", "removeprefix", "removesuffix", "repeat", "replace", "rfind",
+        "slice", "swapcase", "title", "zfill",
+        "isalnum", "isalpha", "isdecimal", "isdigit", "islower", "isnumeric",
+        "isspace", "istitle", "isupper",
+    })
+
+    def propagate_output_schema(self):
+        """A one-to-one method keeps the column names, dtype Unknown (per-method,
+        and the backends disagree on some). A method that fans the column out into
+        several is unknown; see :data:`ONE_TO_ONE_METHODS`."""
+        if self.method in self.ONE_TO_ONE_METHODS:
+            self.output_schema = _schema.cast_columns(self.inputs[0].output_schema)
+        else:
+            self.output_schema = None
 
 
 class GetAttrProjectionOp(Op):
@@ -280,13 +320,42 @@ class GetAttrProjectionOp(Op):
         self.outputs = outputs
         self.output_type = OutputType.FRAME
 
+    # Accessor attributes whose `<ns>.<attr>` projection keeps the input's columns
+    # and only changes their dtype, keyed by namespace. `make_frame_get_attr` wraps
+    # *any* attribute of a frame-like input, so this must be an allow-list: `.T`
+    # transposes, `.values` is an ndarray, `.shape` a tuple, and
+    # `.iloc`/`.loc`/`.index`/`.columns` are not column-preserving either. Only
+    # `.dt` reaches here (`.str` is fused into a `StringMethodOp` during
+    # extraction), and the mask folder gates on the same set (see
+    # `_column_expr._is_foldable`).
+    #
+    # The gate is per *attribute*, not per namespace: `.dt.components` and
+    # `.dt.isocalendar` fan one column out into several (7 and 3 respectively), so
+    # a namespace-level allow-list would report the input's single column for them.
+    # Listed below are the `.dt` properties that yield a Series; a `.dt` *method*
+    # is deliberately absent, since the schema of a bound method is meaningless
+    # (the enclosing call has no rule and stays unknown).
+    ELEMENTWISE_ACCESSORS = {
+        "dt": frozenset({
+            "date", "day", "day_of_week", "day_of_year", "dayofweek", "dayofyear",
+            "days", "days_in_month", "daysinmonth", "hour", "is_leap_year",
+            "is_month_end", "is_month_start", "is_quarter_end", "is_quarter_start",
+            "is_year_end", "is_year_start", "microsecond", "microseconds",
+            "minute", "month", "nanosecond", "nanoseconds", "quarter", "second",
+            "seconds", "time", "timetz", "weekday", "year",
+        }),
+    }
+
     def propagate_output_schema(self):
-        """An attribute/accessor projection (e.g. ``.dt.year``) preserves the
-        input's column names but changes their dtype. The result dtype depends on
-        the accessor (``.dt.year``->int, ``.dt.is_month_end``->bool, ...) and
-        pandas/polars disagree on some, so we keep the names and mark the dtypes
-        ``Unknown`` rather than infer them."""
-        self.output_schema = _schema.retype_columns(self.inputs[0].output_schema)
+        """An accessor projection (``.dt.year``) keeps the column names, dtype
+        Unknown. Anything else, including a ``.dt`` attribute that fans out into
+        several columns, is unknown; see :data:`ELEMENTWISE_ACCESSORS`."""
+        allowed = (self.ELEMENTWISE_ACCESSORS.get(self.attr_name[0], ())
+                   if len(self.attr_name) == 2 else ())
+        if self.attr_name and self.attr_name[-1] in allowed:
+            self.output_schema = _schema.cast_columns(self.inputs[0].output_schema)
+        else:
+            self.output_schema = None
 
 
 def make_datetime_conversion_op(op: CallOp) -> DatetimeConversionOp:
