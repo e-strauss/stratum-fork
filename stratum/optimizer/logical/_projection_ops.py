@@ -72,14 +72,29 @@ class MetadataOp(Op):
         self.output_type = OutputType.FRAME
 
     def propagate_output_schema(self):
-        """Only ``rename`` is modelled: it remaps the columns named in ``columns``
-        (or the axis=1 ``mapper``) and leaves the rest."""
+        """Only ``rename`` is modelled.
+
+        A rename aimed at the columns (``columns=``, or a mapper with
+        ``axis=1``/``"columns"``) remaps them. One aimed at the index -- ``index=``,
+        or a positional mapper under pandas' default ``axis=0`` -- leaves the
+        column names untouched, so the schema passes straight through instead of
+        being given up. ``axis`` is keyword-only on ``DataFrame.rename``, so only
+        the mapper itself can arrive positionally.
+        """
+        if self.func != "rename":
+            self.output_schema = None
+            return
         kwargs = self.kwargs or {}
-        mapping = None
-        if self.func == "rename":
-            mapping = kwargs.get("columns")
-            if mapping is None and kwargs.get("axis") == 1:
-                mapping = kwargs.get("mapper")
+        args = self.args or ()
+        axis = kwargs.get("axis")
+        if "columns" in kwargs:
+            mapping = kwargs["columns"]
+        elif axis in (1, "columns"):
+            mapping = kwargs.get("mapper", args[0] if args else None)
+        elif axis is None or axis in (0, "index"):
+            mapping = {}  # renames the index (or nothing): columns unchanged
+        else:
+            mapping = None  # e.g. a graph-fed axis: can't tell which way it renames
         self.output_schema = _schema.rename_columns(self.inputs[0].output_schema, mapping)
 
 
@@ -129,18 +144,44 @@ class DropOp(ProjectionOp):
         inputs: list[Op] = None, outputs: list[Op] = None, columns: list[str] = None):
         super().__init__(args=args, kwargs=kwargs, inputs=inputs, outputs=outputs, columns=columns)
 
+    def _drops_columns(self):
+        """Whether this drop works across the columns: True, False for a row drop,
+        or None when the axis isn't statically known.
+
+        pandas defaults to ``axis=0``, i.e. dropping *rows* by index label, which
+        leaves the column set untouched. ``axis`` is keyword-only on
+        ``DataFrame.drop``, so it can never arrive positionally in ``args``.
+        """
+        kwargs = self.kwargs or {}
+        if "columns" in kwargs:
+            return True
+        if "index" in kwargs and "axis" not in kwargs:
+            return False
+        axis = kwargs.get("axis", 0)
+        if axis in (0, "index"):
+            return False
+        if axis in (1, "columns"):
+            return True
+        return None  # e.g. a graph-fed axis
+
     def _dropped_columns(self):
         """Column labels being dropped, or ``None`` if not statically known."""
         kwargs = self.kwargs or {}
         if "columns" in kwargs:
             return kwargs["columns"]
-        # positional form `df.drop(labels, axis=1)`: labels are columns only when axis==1.
-        if self.args and kwargs.get("axis", 0) == 1:
-            return self.args[0]
-        return None
+        return self.args[0] if self.args else None
 
     def propagate_output_schema(self):
-        self.output_schema = _schema.drop_columns(self.inputs[0].output_schema, self._dropped_columns())
+        """``drop(columns=...)`` / ``axis=1`` removes the named columns; a row drop
+        (the default ``axis=0``, or ``index=``) leaves every column in place."""
+        drops_columns = self._drops_columns()
+        schema = self.inputs[0].output_schema
+        if drops_columns is None:
+            self.output_schema = None
+        elif drops_columns:
+            self.output_schema = _schema.drop_columns(schema, self._dropped_columns())
+        else:
+            self.output_schema = schema
 
 
 class ColumnSelectorOp(Op):

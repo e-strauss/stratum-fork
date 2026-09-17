@@ -18,6 +18,8 @@ from stratum.optimizer.logical._ops import (
     BinOp, ChoiceOp, GetItemOp, Op, OperandRef, OutputType, UnaryOp)
 from stratum.optimizer.logical._projection_ops import StringMethodOp
 from stratum.optimizer._optimize import optimize as optimize_full
+from stratum.optimizer.logical._candidate_ops import ScoreCandidatesOp
+from stratum.optimizer.logical._scoring import Metric
 from tests._helpers import csv_file
 
 
@@ -165,10 +167,34 @@ class TestSchemaPropagation(unittest.TestCase):
         op.propagate_output_schema()
         self.assertEqual(["x", "y"], list(op.output_schema.keys()))
 
-    def test_drop_row_axis_is_unknown(self):
-        # a positional row drop (`df.drop(labels)`, axis defaults to 0) names no
-        # columns statically, so the schema can't be resolved -> unknown.
-        op = DropOp(args=[[0, 1]], kwargs={"axis": 0})
+    def test_row_drop_keeps_every_column(self):
+        # `drop` defaults to axis=0, i.e. dropping *rows* by index label, which
+        # leaves the column set untouched. Ground truth from pandas per spelling.
+        frame = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+        schema = pl.Schema({"x": pl.Int64, "y": pl.Int64})
+        cases = [
+            (dict(args=[[0]], kwargs={}), dict(labels=[0])),
+            (dict(args=[[0]], kwargs={"axis": 0}), dict(labels=[0], axis=0)),
+            (dict(args=[[0]], kwargs={"axis": "index"}), dict(labels=[0], axis="index")),
+            (dict(args=[], kwargs={"index": [0]}), dict(index=[0])),
+        ]
+        for op_kwargs, drop_kwargs in cases:
+            with self.subTest(drop_kwargs=drop_kwargs):
+                op = DropOp(**op_kwargs)
+                op.inputs = [_stub(schema)]
+                op.propagate_output_schema()
+                self.assertEqual(list(frame.drop(**drop_kwargs).columns),
+                                 list(op.output_schema.keys()))
+
+    def test_drop_with_a_string_column_axis_removes_columns(self):
+        op = DropOp(args=[["y"]], kwargs={"axis": "columns"})
+        op.inputs = [_stub(pl.Schema({"x": pl.Int64, "y": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertEqual(["x"], list(op.output_schema.keys()))
+
+    def test_drop_with_a_graph_fed_axis_is_unknown(self):
+        # the axis decides whether this touches the columns at all.
+        op = DropOp(args=[["y"]], kwargs={"axis": OperandRef(1)})
         op.inputs = [_stub(pl.Schema({"x": pl.Int64, "y": pl.Int64}))]
         op.propagate_output_schema()
         self.assertIsNone(op.output_schema)
@@ -246,6 +272,62 @@ class TestSchemaPropagation(unittest.TestCase):
         op = SelectionOp(kind=SelectionKind.HEAD)
         op.propagate_output_schema()
         self.assertIsNone(op.output_schema)
+
+    def test_duplicate_projection_labels_are_unknown(self):
+        # `df[["a", "a"]]` really yields two `a` columns; a Schema cannot express
+        # that, and narrowing it to one would understate the output.
+        self.assertEqual(["a", "a"],
+                         list(pd.DataFrame({"a": [1], "b": [2]})[["a", "a"]].columns))
+        op = GetItemOp(key=["a", "a"])
+        op.inputs = [_stub(pl.Schema({"a": pl.Int64, "b": pl.Int64}), OutputType.FRAME)]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
+
+    def test_rename_collision_is_unknown(self):
+        # two columns renamed onto one label: pandas keeps both.
+        self.assertEqual(["c", "c"], list(pd.DataFrame({"a": [1], "b": [2]})
+                                          .rename(columns={"a": "c", "b": "c"}).columns))
+        op = MetadataOp(func="rename", kwargs={"columns": {"a": "c", "b": "c"}})
+        op.inputs = [_stub(pl.Schema({"a": pl.Int64, "b": pl.Float64}))]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
+
+    def test_index_only_rename_keeps_the_columns(self):
+        # a rename aimed at the index leaves the column names untouched.
+        frame = pd.DataFrame({"x": [1, 2], "y": [3, 4]})
+        schema = pl.Schema({"x": pl.Int64, "y": pl.Int64})
+        for op_kwargs, rename_kwargs in [
+            (dict(kwargs={"index": {0: 9}}), dict(index={0: 9})),
+            (dict(args=[{0: 9}], kwargs={}), dict(mapper={0: 9})),
+        ]:
+            with self.subTest(rename_kwargs=rename_kwargs):
+                op = MetadataOp(func="rename", **op_kwargs)
+                op.inputs = [_stub(schema)]
+                op.propagate_output_schema()
+                self.assertEqual(list(frame.rename(**rename_kwargs).columns),
+                                 list(op.output_schema.keys()))
+
+    def test_rename_with_a_graph_fed_axis_is_unknown(self):
+        op = MetadataOp(func="rename", args=[{"x": "a"}], kwargs={"axis": OperandRef(1)})
+        op.inputs = [_stub(pl.Schema({"x": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
+
+    def test_score_candidates_schema_matches_the_table_it_builds(self):
+        # `process` builds pl.DataFrame({"id": names, "scores": metric values}),
+        # plus "vals" when emit_predictions.
+        metric = Metric(name="acc", fn=lambda y_true, values: 0.5)
+        real = pl.DataFrame({"id": ["c0", "c1"], "scores": [0.5, 0.7]}).schema
+
+        op = ScoreCandidatesOp(candidate_names=["c0", "c1"], metric=metric)
+        op.propagate_output_schema()
+        self.assertEqual(real, op.output_schema)
+
+        op = ScoreCandidatesOp(candidate_names=["c0", "c1"], metric=metric,
+                               emit_predictions=True)
+        op.propagate_output_schema()
+        self.assertEqual(["id", "scores", "vals"], list(op.output_schema.keys()))
+        self.assertEqual(pl.Unknown, op.output_schema["vals"])
 
     def test_projection_of_absent_column_is_unknown(self):
         # selecting a column the input schema doesn't carry can't be resolved
@@ -452,6 +534,89 @@ class TestSchemaPropagation(unittest.TestCase):
                         self.assertEqual(pl.Int64, op.output_schema[name], name)
                     else:
                         self.assertEqual(pl.Unknown, op.output_schema[name], name)
+
+    def test_join_key_collapse_matches_pandas_for_every_key_spelling(self):
+        # pandas pairs left_on/right_on *positionally* and collapses a pair only
+        # when both names are equal; a bare merge() infers the keys from the common
+        # columns. A set intersection models neither, so every spelling is checked
+        # against the columns pandas actually produces.
+        kv = pd.DataFrame({"k": [1, 2], "v": [1, 2]})
+        kw = pd.DataFrame({"k": [1, 3], "w": [9, 8]})
+        kv_s = pl.Schema({"k": pl.Int64, "v": pl.Int64})
+        kw_s = pl.Schema({"k": pl.Int64, "w": pl.Int64})
+        ab = pd.DataFrame({"a": [1], "b": [2]})
+        ab_s = pl.Schema({"a": pl.Int64, "b": pl.Int64})
+
+        cases = [
+            # (JoinOp kwargs, merge kwargs, left frame/schema, right frame/schema)
+            (dict(), dict(), kv, kw, kv_s, kw_s),
+            (dict(left_on="k", right_on="k"), dict(on="k"), kv, kw, kv_s, kw_s),
+            (dict(how="cross"), dict(how="cross"), kv, kw, kv_s, kw_s),
+            (dict(left_index=True, right_index=True),
+             dict(left_index=True, right_index=True), kv, kw, kv_s, kw_s),
+            # shares both names, collapses neither: pandas emits a_x,b_x,a_y,b_y
+            (dict(left_on=["a", "b"], right_on=["b", "a"]),
+             dict(left_on=["a", "b"], right_on=["b", "a"]), ab, ab, ab_s, ab_s),
+            (dict(left_on="a", right_on="b"),
+             dict(left_on="a", right_on="b"), ab, ab, ab_s, ab_s),
+        ]
+        for join_kwargs, merge_kwargs, left, right, left_s, right_s in cases:
+            with self.subTest(join_kwargs=join_kwargs):
+                op = JoinOp(**join_kwargs)
+                op.inputs = [_stub(left_s), _stub(right_s)]
+                op.propagate_output_schema()
+                self.assertEqual(list(left.merge(right, **merge_kwargs).columns),
+                                 list(op.output_schema.keys()))
+
+    def test_join_mixing_a_key_column_with_an_index_is_unknown(self):
+        # pandas emits an extra key column for `left_on=... , right_index=True`
+        # (k, k_x, k_y from two frames holding k), which isn't modelled.
+        op = JoinOp(left_on="k", right_index=True)
+        op.inputs = [_stub(pl.Schema({"k": pl.Int64, "v": pl.Int64})),
+                     _stub(pl.Schema({"k": pl.Int64, "w": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
+
+    def test_join_graph_fed_keys_are_unknown(self):
+        op = JoinOp(left_on=OperandRef(2), right_on="k")
+        op.inputs = [_stub(pl.Schema({"k": pl.Int64})), _stub(pl.Schema({"k": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
+
+    def test_collapsed_key_keeps_its_dtype_only_when_both_sides_agree(self):
+        # The collapsed key is the two key columns merged into one, and which side
+        # wins depends on `how`: pandas keeps the left's int32 for inner/left but
+        # takes the right's float64 for right/outer. No single dtype is correct for
+        # a disagreeing pair, so it has to be Unknown.
+        left = pd.DataFrame({"k": pd.Series([1, 2], dtype="int32"), "v": [1, 2]})
+        right = pd.DataFrame({"k": pd.Series([1.0, 3.0], dtype="float64"), "w": [9, 8]})
+        self.assertEqual(
+            {"inner": "int32", "left": "int32", "right": "float64", "outer": "float64"},
+            {how: str(left.merge(right, on="k", how=how).dtypes["k"])
+             for how in ("inner", "left", "right", "outer")})
+
+        for how in ("inner", "left", "right", "outer"):
+            with self.subTest(how=how):
+                op = JoinOp(how=how, left_on="k", right_on="k")
+                op.inputs = [_stub(pl.Schema({"k": pl.Int32, "v": pl.Int64})),
+                             _stub(pl.Schema({"k": pl.Float64, "w": pl.Int64}))]
+                op.propagate_output_schema()
+                self.assertEqual(pl.Unknown, op.output_schema["k"])
+
+        # agreeing key dtypes still survive, even through an outer join
+        op = JoinOp(how="outer", left_on="k", right_on="k")
+        op.inputs = [_stub(pl.Schema({"k": pl.Int64, "v": pl.Int64})),
+                     _stub(pl.Schema({"k": pl.Int64, "w": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertEqual(pl.Int64, op.output_schema["k"])
+
+    def test_join_suffix_collision_is_unknown(self):
+        # `.join()` defaults to empty suffixes; two overlapping columns would land
+        # on the same label, which pandas rejects and a Schema cannot express.
+        op = JoinOp(left_index=True, right_index=True, suffixes=("", ""))
+        op.inputs = [_stub(pl.Schema({"a": pl.Int64})), _stub(pl.Schema({"a": pl.Int64}))]
+        op.propagate_output_schema()
+        self.assertIsNone(op.output_schema)
 
     def test_join_unknown_input_propagates(self):
         op = JoinOp(how="inner", left_on="k", right_on="k", suffixes=("_x", "_y"))

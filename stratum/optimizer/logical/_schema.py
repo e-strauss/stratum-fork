@@ -125,6 +125,10 @@ def project_columns(schema, columns) -> pl.Schema | None:
     names = as_column_list(columns)
     if not is_known(schema) or names is None:
         return None
+    if len(set(names)) != len(names):
+        # `df[["a", "a"]]` really does produce two `a` columns, which a Schema
+        # cannot express -- narrowing it to one would understate the output.
+        return None
     out: dict = {}
     for name in names:
         if name not in schema:
@@ -159,10 +163,17 @@ def cast_columns(schema, dtype=UNKNOWN_DTYPE) -> pl.Schema | None:
 
 
 def rename_columns(schema, mapping) -> pl.Schema | None:
-    """Input schema with column names remapped through ``mapping`` (name->name)."""
+    """Input schema with column names remapped through ``mapping`` (name->name).
+
+    Unknown when two columns would be renamed onto the same label: pandas keeps
+    both, and a Schema would silently collapse them to the last one.
+    """
     if not is_known(schema) or not isinstance(mapping, dict):
         return None
-    return pl.Schema({mapping.get(name, name): dt for name, dt in schema.items()})
+    out = {mapping.get(name, name): dt for name, dt in schema.items()}
+    if len(out) != len(schema):
+        return None
+    return pl.Schema(out)
 
 
 def schema_of_frame(frame) -> pl.Schema | None:
@@ -254,26 +265,49 @@ def join_schema(left, right, keys, suffixes, how="inner") -> pl.Schema | None:
     a single column. ``how`` decides which dtypes survive: an unmatched row is
     null-padded, which widens an integer column to float, so the nullable side's
     non-key columns are reduced to ``UNKNOWN_DTYPE`` (see
-    :data:`_NULLABLE_JOIN_SIDES`). Unknown if either side is unknown.
+    :data:`_NULLABLE_JOIN_SIDES`).
+
+    ``keys`` are the names that collapse, as the caller worked them out from the
+    join's key arguments. Unknown if either side is unknown, if ``keys`` is
+    ``None`` (the caller could not determine them), or if two output columns would
+    land on the same label -- pandas rejects that at runtime, and a Schema cannot
+    express it either way.
     """
-    if not is_known(left) or not is_known(right):
+    if not is_known(left) or not is_known(right) or keys is None:
         return None
     lsuffix, rsuffix = suffixes
-    keys = set(keys or ())
+    keys = set(keys)
     overlap = (set(left) & set(right)) - keys
     nullable = _NULLABLE_JOIN_SIDES.get(how, ())
 
     def dtype_for(side, name, dt):
-        # A join key never gains nulls, so it keeps its dtype even in an outer join.
-        return UNKNOWN_DTYPE if side in nullable and name not in keys else dt
+        if name in keys:
+            # A collapsed key never gains nulls, but it *is* the two sides' key
+            # columns merged into one, and pandas upcasts when they disagree
+            # (int32 + float64 -> float64). So the dtype only survives when both
+            # sides already carry it.
+            return dt if left.get(name) == right.get(name) else UNKNOWN_DTYPE
+        return UNKNOWN_DTYPE if side in nullable else dt
 
     out: dict = {}
+
+    def put(name, dt):
+        """Record one output column; False if that label is already taken."""
+        if name in out:
+            return False
+        out[name] = dt
+        return True
+
     for name, dt in left.items():
-        out[f"{name}{lsuffix}" if name in overlap else name] = dtype_for("left", name, dt)
+        if not put(f"{name}{lsuffix}" if name in overlap else name,
+                   dtype_for("left", name, dt)):
+            return None
     for name, dt in right.items():
         if name in keys:
             continue
-        out[f"{name}{rsuffix}" if name in overlap else name] = dtype_for("right", name, dt)
+        if not put(f"{name}{rsuffix}" if name in overlap else name,
+                   dtype_for("right", name, dt)):
+            return None
     return pl.Schema(out)
 
 
