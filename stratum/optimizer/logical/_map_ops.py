@@ -113,6 +113,9 @@ class ExpressionMapOp(MapOp):
         return name(self.expr)
 
     def propagate_output_schema(self):
+        if isinstance(self.expr, OperandLeaf):
+            self.output_schema = self.inputs[self.expr.ref.k].output_schema
+            return
         if self.expr.preserves_columns:
             dtype = pl.Boolean if self.expr.boolean_result else _schema.UNKNOWN_DTYPE
             self.output_schema = _schema.cast_columns(self.inputs[0].output_schema, dtype)

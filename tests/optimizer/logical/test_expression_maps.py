@@ -183,7 +183,7 @@ def test_assignment_aligns_a_graph_fed_literal_series(selector):
 
 def test_cse_keeps_different_scalar_operand_types():
     ops = logical(lambda df: df.assign(a=df["a"] * st.as_data_op(1)).skb.concat(
-        [df.assign(a=df["a"] * st.as_data_op(1.0))], axis=0))
+        [df.assign(a=df["a"] * st.as_data_op(1.0))], axis=0), algebraic_rewrites=False)
     assert len([op for op in ops if isinstance(op, ExpressionMapOp)]) == 2
 
 
