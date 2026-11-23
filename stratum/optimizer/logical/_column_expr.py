@@ -274,20 +274,14 @@ class StrExpr(ColumnExpr):
     """
     __slots__ = ("operand", "method", "params")
 
-    index_effect = IndexEffect.KEEP
-
     # `.str` methods that map one input element to one output element, so the call
-    # keeps its operand's columns and only changes their dtype. Extraction admits
-    # *any* `.str.<method>` into this expression, so this must be an allow-list: `extract`,
-    # `extractall`, `get_dummies`, `partition` and `rpartition` return a frame of
-    # new columns, `split`/`rsplit` do the same under `expand=True`, and `cat()`
-    # collapses the column to a single string. Every member below was checked to
-    # return a Series.
+    # keeps its operand's columns and only changes their dtype. Shape-changing
+    # methods such as extractall and cat remain opaque calls.
     ONE_TO_ONE_METHODS = frozenset({
         "count", "lower", "upper", "startswith", "endswith", "len",
         "strip", "lstrip", "rstrip", "capitalize", "casefold", "contains", "find", "fullmatch", "match",
         "pad", "removeprefix", "removesuffix", "repeat", "replace", "rfind",
-        "slice", "swapcase", "title", "zfill",
+        "slice", "swapcase", "title", "zfill", "normalize", "translate",
         "isalnum", "isalpha", "isdecimal", "isdigit", "islower", "isnumeric",
         "isspace", "istitle", "isupper",
     })
@@ -302,7 +296,13 @@ class StrExpr(ColumnExpr):
 
     @property
     def preserves_columns(self):
-        return self.method in self.ONE_TO_ONE_METHODS
+        return (self.method in self.ONE_TO_ONE_METHODS
+                or self.method in {"split", "rsplit"}
+                and self.params.get("expand", False) is False)
+
+    @property
+    def index_effect(self):
+        return IndexEffect.KEEP if self.preserves_columns else IndexEffect.NEW
 
     @property
     def aligns_by_label(self):

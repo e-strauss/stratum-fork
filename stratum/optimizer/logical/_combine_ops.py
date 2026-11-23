@@ -14,7 +14,10 @@ from stratum.optimizer.logical import _schema
 
 
 class CombineOp(Op):
-    """Base for assignment and concatenation."""
+    """Assignment, concatenation, and joins, each with its own alignment rules.
+
+    Family membership implies neither row preservation nor a shared index.
+    """
     logical_family = "Combine"
 
 

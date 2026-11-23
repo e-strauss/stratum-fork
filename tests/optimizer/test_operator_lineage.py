@@ -147,7 +147,7 @@ def test_expressions_encode_types_operands_and_options():
     BinOpExpr(np.add, Col("x"), Const(1)),
     UnaryOpExpr(lambda x: -x, Col("x")),
     Const(object()),
-    StrExpr(Col("s"), "split", {"pat": ","}),
+    StrExpr(Col("s"), "extractall", {"pat": "(.)"}),
     StrExpr(Col("s"), "replace", {"pat": "a", "repl": lambda match: "b"}),
 ])
 def test_unknown_expression_code_has_no_lineage(expression):
@@ -159,7 +159,7 @@ def test_unknown_expression_code_has_no_lineage(expression):
     SampleSelectionOp(n=2),
     SampleSelectionOp(n=2, seed=np.random.RandomState(0)),
     SampleSelectionOp(n=2, seed=np.random.default_rng(0)),
-    ExpressionMapOp(StrExpr(OperandLeaf(OperandRef(0)), "split", {"pat": ","})),
+    ExpressionMapOp(StrExpr(OperandLeaf(OperandRef(0)), "extractall", {"pat": "(.)"})),
     RenameOp(columns=lambda name: name.upper()),
     AssignOp(kwargs={"x": lambda frame: frame["y"]}),
     ApplyUDFOp(args=(lambda frame: frame,)),
@@ -249,9 +249,9 @@ def test_a_udf_blocks_downstream_keys(csv_path):
 def test_folding_does_not_make_an_unsupported_string_method_cacheable(csv_path):
     data = read_csv(csv_path)
     reasons = {}
-    keys = plan_keys(data.assign(parts=data["text"].str.split("a")), reasons=reasons)
+    keys = plan_keys(data["text"].str.extractall("(.)"), reasons=reasons)
     assert keys[0][1] is not None and keys[-1][1] is None
-    assert any("not a known string method" in reason for reason in reasons.values())
+    assert reasons
 
 
 def test_dataframe_keys_are_stable_across_processes(csv_path):

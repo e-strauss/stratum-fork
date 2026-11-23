@@ -10,12 +10,10 @@ identity and ``isinstance`` checks against the logical class.
 """
 from __future__ import annotations
 
-import logging
 import operator
 
 import pandas as pd
 import polars as pl
-from numpy import sin, cos
 
 from stratum.optimizer.logical._base import (
     OutputType, OperandRef, _resolve_args, _resolve_kwargs, _resolve_operand)
@@ -32,9 +30,6 @@ from stratum.optimizer.physical._polars_translate import (
     polars_dt_attribute, polars_dt_attribute_unsupported,
     polars_to_datetime)
 from stratum.optimizer.physical._registry import physical_impl
-
-logger = logging.getLogger(__name__)
-
 
 def _resolved_call(op, inputs: list):
     """The receiver (operand 0) and the recorded call's resolved arguments."""
@@ -113,21 +108,6 @@ class PandasApplyUDFOp(ApplyUDFOp, PhysicalOp):
     def process(self, inputs: list):
         _obj, _args, _kwargs = _resolved_call(self, inputs)
         return _obj.apply(*_args, **_kwargs)
-
-
-@physical_impl(of=ApplyUDFOp, backend="polars")
-class PolarsApplyUDFOp(ApplyUDFOp, PhysicalOp):
-    def process(self, inputs: list):
-        _obj, _args, _kwargs = _resolved_call(self, inputs)
-        if not isinstance(_obj, pl.Series):
-            return _obj.map_rows(*_args, **_kwargs)
-        if _args[0] == sin:
-            logger.debug("Rewrite UDF sin to polars sin")
-            return _obj.sin()
-        if _args[0] == cos:
-            logger.debug("Rewrite UDF cos to polars cos")
-            return _obj.cos()
-        return _obj.map_elements(*_args, **_kwargs)
 
 
 # --- DatetimeConversionOp (pd.to_datetime) ------------------------------------

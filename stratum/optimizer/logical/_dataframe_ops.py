@@ -330,7 +330,8 @@ def make_string_method_op(op: MethodCallOp) -> ExpressionMapOp | None:
 
     Input 0 changes from the ``.str`` accessor to its source column. Remaining
     input positions are preserved as ``OperandLeaf`` references in ``params``.
-    Arguments are bound against pandas' signature; invalid calls stay opaque.
+    Only known row-preserving Series results are extracted. Unknown shapes and
+    invalid calls stay opaque, with no inferred output kind or index relation.
     A shared accessor is detached after its last consumer has been replaced.
     """
     if not hasattr(pd.Series.str, op.method_name):
@@ -342,11 +343,11 @@ def make_string_method_op(op: MethodCallOp) -> ExpressionMapOp | None:
     column = accessor.inputs[0]
     operands = [OperandLeaf(OperandRef(k)) for k in range(len(op.inputs))]
     expr = StrExpr(operands[0], op.method_name, _resolve_operand(params, operands))
+    if not expr.preserves_columns:
+        return None
     new_op = ExpressionMapOp(expr, inputs=[column, *op.inputs[1:]],
                              outputs=list(op.outputs))
-    # TODO: Infer output kind by method and arguments; methods such as
-    # str.get_dummies() return a frame, and str.cat() can return a scalar.
-    new_op.output_type = accessor.output_type
+    new_op.output_type = OutputType.SERIES
 
     # Rewire every operand except the accessor: the args feed the new op, and the
     # column now feeds it directly (in place of feeding the accessor).
@@ -439,10 +440,7 @@ def extract_dataframe_op(op: Op, root: Op, map_op = True,
                 elif drops_columns and op.inputs[0].output_type is OutputType.FRAME:
                     new_op = make_drop_op(op)
             elif op.method_name == "apply":
-                # TODO: Infer apply's output kind from its arguments and function;
-                # DataFrame.apply can produce a Series, and Series.apply a frame.
-                new_op = substitute_op(op, ApplyUDFOp(args=op.args, kwargs=op.kwargs),
-                                       keep_kind=True)
+                new_op = substitute_op(op, ApplyUDFOp(args=op.args, kwargs=op.kwargs))
             elif op.method_name == "assign" and not op.args:
                 new_op = substitute_op(op, AssignOp(kwargs=op.kwargs))
             elif op.method_name in ["join", "merge"]:
@@ -506,4 +504,3 @@ def extract_dataframe_op(op: Op, root: Op, map_op = True,
         if root is op:
             root = new_op
     return root, True
-

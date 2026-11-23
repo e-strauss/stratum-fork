@@ -22,9 +22,14 @@ from stratum.optimizer.logical import _schema
 
 
 class MapOp(Op):
-    """Base for value transformations; each variant defines its alignment rules."""
+    """Value transformations, with row and alignment properties per variant.
+
+    Family membership alone does not permit row-local rewrites: independent
+    Series operands may align on a union of labels, and opaque calls can change
+    shape. Use the concrete operator's properties for those decisions.
+    """
     logical_family = "Map"
-    index_effect = IndexEffect.KEEP
+    index_effect = IndexEffect.NEW
 
     def __init__(self, name: str = "", inputs: list[Op] = None, outputs: list[Op] = None):
         super().__init__(name=name, inputs=inputs, outputs=outputs)
@@ -58,7 +63,10 @@ class ExpressionMapOp(MapOp):
 
     ``OperandLeaf(OperandRef(k))`` reads input k. Projection is a separate
     operator; expressions have no implicit source columns. Binary operations
-    retain their operands' label-alignment semantics.
+    retain their operands' label-alignment semantics and can expand the rows.
+    ``output_type`` distinguishes a frame from a Series. Unary and scalar
+    operations retain a Series name; binary Series operations retain it only
+    when both names agree.
     """
     fields = ["expr"]
     cacheable = True
@@ -208,7 +216,11 @@ class CallMapOp(MapOp):
 
 
 class ApplyUDFOp(CallMapOp):
-    """``df.apply(func, ...)`` or ``series.apply(func, ...)``."""
+    """Opaque pandas ``apply``; the function can change shape, labels, and kind."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.output_type = OutputType.UNKNOWN
 
 
 class DatetimeConversionOp(MapOp):
@@ -221,6 +233,7 @@ class DatetimeConversionOp(MapOp):
     ``OperandRef`` when graph-fed.
     """
     fields = ["format", "exact", "cache", "errors"]
+    index_effect = IndexEffect.KEEP
     cacheable = True
     # Additional inputs are parsing options, not row-aligned data operands.
     aligns_by_label = False
@@ -262,6 +275,7 @@ class DatetimeFieldOp(MapOp):
     ``physical/_polars_translate.py``).
     """
     fields = ["field"]
+    index_effect = IndexEffect.KEEP
     cacheable = True
 
     # The `.dt` properties that yield one value per datetime, so the read keeps

@@ -6,9 +6,10 @@ import skrub
 
 from stratum.optimizer._op_utils import validate_dag
 from stratum.optimizer._optimize import OptConfig, optimize
-from stratum.optimizer.logical._base import Uncacheable
+from stratum.optimizer.logical._base import IndexEffect, OutputType
 from stratum.optimizer.logical._column_expr import OperandLeaf, StrExpr
 from stratum.optimizer.logical._map_ops import ExpressionMapOp
+from stratum.optimizer.logical._ops import MethodCallOp
 from stratum.optimizer.physical._fused_map_execs import PolarsFusedAssignOp, PolarsFusedMapOp
 from stratum.optimizer.physical._impl_selection import get_implementation_selector
 from stratum.optimizer.physical._representation import FrameLib, frame_lib
@@ -79,12 +80,11 @@ def test_graph_fed_string_parameters_are_resolved_at_execution(selector, path, m
 ])
 def test_shape_changing_string_calls_keep_their_pandas_results(method, args, kwargs):
     ops, result = execute(lambda df: getattr(df["s"].str, method)(*args, **kwargs), "greedy")
-    mapped = string_map(ops)
-    assert mapped.output_schema is None
-    assert not mapped.expr.preserves_columns
-    assert frame_lib(mapped) is FrameLib.PANDAS
-    with pytest.raises(Uncacheable):
-        mapped.expr.lineage()
+    [called] = [op for op in ops if isinstance(op, MethodCallOp) and op.method_name == method]
+    assert called.output_schema is None
+    assert called.output_type is OutputType.UNKNOWN
+    assert called.index_effect is IndexEffect.NEW
+    assert frame_lib(called) is FrameLib.PANDAS
     expected = getattr(FRAME["s"].str, method)(*args, **kwargs)
     if isinstance(expected, pd.DataFrame):
         pd.testing.assert_frame_equal(result, expected)
@@ -93,10 +93,11 @@ def test_shape_changing_string_calls_keep_their_pandas_results(method, args, kwa
 
 
 @pytest.mark.parametrize("method,args", [("normalize", ("NFKC",)), ("split", ("1",))])
-def test_native_methods_outside_the_fusion_allowlist_stay_materialized(method, args):
-    ops, _ = execute(lambda df: getattr(df["s"].str, method)(*args), "greedy")
-    assert frame_lib(string_map(ops)) is FrameLib.POLARS
-    assert not any(isinstance(op, PolarsFusedMapOp) for op in ops)
+def test_known_series_string_results_can_run_natively(method, args):
+    ops, result = execute(lambda df: getattr(df["s"].str, method)(*args), "greedy")
+    assert frame_lib(ops[-1]) is FrameLib.POLARS
+    expected = getattr(FRAME["s"].str, method)(*args)
+    pd.testing.assert_series_equal(result, expected)
 
 
 def test_string_mapping_arguments_preserve_dictionary_subclasses():

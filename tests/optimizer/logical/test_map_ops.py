@@ -696,18 +696,20 @@ class TestMapRewrites(unittest.TestCase):
         self.assertIsInstance(ops[1], ColumnProjectionOp)
         self.assertIsInstance(ops[3], ApplyUDFOp)
 
-    def test_fused_get_attr(self):
+    def test_unknown_apply_keeps_its_consumers_opaque(self):
         data = st.as_data_op(self.df)[["datetime"]].apply(
             pd.to_datetime, format='%Y-%m-%d %H:%M:%S')
         data = data.assign(year=data["datetime"].dt.year,
                            month=data["datetime"].dt.month)
         data = data.copy()
         ops = optimize(data)
-        assign = next(o for o in ops if isinstance(o, AssignOp))
-        self.assertEqual({"year", "month"}, set(assign.kwargs))
-        self.assertTrue(all(isinstance(assign.inputs[ref.k], DatetimeFieldOp)
-                            for ref in assign.kwargs.values()))
-        self.assertIsInstance(ops[-1], MethodCallOp)  # the trailing .copy()
+        self.assertFalse(any(isinstance(op, AssignOp) for op in ops))
+        self.assertTrue(any(isinstance(op, MethodCallOp) and op.method_name == "assign"
+                            for op in ops))
+        expected = self.df[["datetime"]].apply(pd.to_datetime, format='%Y-%m-%d %H:%M:%S')
+        expected = expected.assign(year=expected["datetime"].dt.year,
+                                   month=expected["datetime"].dt.month)
+        pd.testing.assert_frame_equal(_api.evaluate(data), expected)
 
     def test_supported_series_method_gets_typed_op(self):
         data = st.as_data_op(self.df)["x"].astype("float32")
@@ -772,29 +774,6 @@ class TestApplyUDFOp(unittest.TestCase):
         result = run_op(op, pd.DataFrame({"a": [1, 2], "b": [3, 4]}))
         self.assertEqual([2, 4], result["a"].tolist())
 
-    def test_polars_sin_rewrite(self):
-        with force_polars():
-            op = ApplyUDFOp(args=(np.sin,), kwargs={})
-            result = run_op(op, pl.Series("a", [0.0, np.pi / 2]))
-            self.assertAlmostEqual(1.0, result[1], places=5)
-
-    def test_polars_cos_rewrite(self):
-        with force_polars():
-            op = ApplyUDFOp(args=(np.cos,), kwargs={})
-            result = run_op(op, pl.Series("a", [0.0]))
-            self.assertAlmostEqual(1.0, result[0], places=5)
-
-    def test_polars_single_col_general_func(self):
-        with force_polars():
-            op = ApplyUDFOp(args=(lambda x: x + 1,), kwargs={})
-            result = run_op(op, pl.Series("a", [1, 2, 3]))
-            self.assertEqual([2, 3, 4], result.to_list())
-
-    def test_polars_multi_col_map_rows(self):
-        with force_polars():
-            op = ApplyUDFOp(args=(lambda row: (row[0] + row[1],),), kwargs={})
-            result = run_op(op, pl.DataFrame({"a": [1, 2], "b": [3, 4]}))
-            self.assertIsNotNone(result)
 
 
 class TestAssignOpPolars(PolarsTestCase):

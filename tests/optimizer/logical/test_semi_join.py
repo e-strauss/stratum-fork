@@ -44,11 +44,11 @@ class TestFilteringJoinConfig(unittest.TestCase):
     def test_a_regular_join_keeps_its_suffixes(self):
         self.assertEqual(("_x", "_y"), JoinOp(how="inner").suffixes)
 
-    def test_a_filtering_join_is_in_the_join_family(self):
-        self.assertEqual("Join", FilteringJoinOp.logical_family)
+    def test_a_filtering_join_is_in_the_combine_family(self):
+        self.assertEqual("Combine", FilteringJoinOp.logical_family)
 
     def test_the_direction_is_visible_in_the_plan(self):
-        # "Join" alone cannot tell a semi from an anti.
+        # The family alone cannot tell a semi from an anti.
         self.assertIn("semi", str(FilteringJoinOp(left_on="c")))
         self.assertIn("anti", str(FilteringJoinOp(anti=True, left_on="c")))
 

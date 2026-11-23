@@ -92,17 +92,17 @@ class TestOutputTypeInference(unittest.TestCase):
         ops = optimize(st.as_data_op(self.df).T, OptConfig(dataframe_ops=True))
         self.assertIs(OutputType.FRAME, self._one(ops, AttributeReadOp).output_type)
 
-    def test_apply_on_column_is_series(self):
-        # df["x"].apply(f) operates on a column -> SERIES.
+    def test_apply_on_column_has_unknown_kind(self):
+        # An arbitrary function can return Series values and widen the result.
         ops = optimize(st.as_data_op(self.df)["x"].apply(lambda v: v + 1),
                        OptConfig(dataframe_ops=True))
-        self.assertIs(OutputType.SERIES, self._one(ops, ApplyUDFOp).output_type)
+        self.assertIs(OutputType.UNKNOWN, self._one(ops, ApplyUDFOp).output_type)
 
-    def test_apply_on_frame_is_frame(self):
-        # df.apply(f) operates on the whole frame -> FRAME.
+    def test_apply_on_frame_has_unknown_kind(self):
+        # An arbitrary function can reduce each column to a scalar.
         ops = optimize(st.as_data_op(self.df).apply(lambda col: col + 1),
                        OptConfig(dataframe_ops=True))
-        self.assertIs(OutputType.FRAME, self._one(ops, ApplyUDFOp).output_type)
+        self.assertIs(OutputType.UNKNOWN, self._one(ops, ApplyUDFOp).output_type)
 
     def test_column_arithmetic_is_a_series_map(self):
         # Column arithmetic is represented independently of numeric extraction.

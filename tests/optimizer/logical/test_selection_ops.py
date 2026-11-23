@@ -231,14 +231,14 @@ class TestMaskFolding(unittest.TestCase):
             BinOpExpr(operator.gt, StrExpr(Col("s"), "count", {"pat": "1"}), Const(0)),
             self._mask(ops).predicate)
 
-    def test_string_filter_in_mask_folds2(self):
+    def test_string_filter_after_unknown_apply_stays_opaque(self):
         df = self.df.assign(s=["a1", "bb", "c1"])
         data = st.as_data_op(df)
         col_s_transformed = data["s"].apply(lambda s: "row_" + s)
         ops = optimize(data[col_s_transformed.str.count("1") > 0], OptConfig(dataframe_ops=True))
-        self.assertEqual(
-            BinOpExpr(operator.gt, StrExpr(OperandLeaf(OperandRef(1)), "count", {"pat": "1"}), Const(0)),
-            self._mask(ops).predicate)
+        self.assertFalse(any(isinstance(op, MaskSelectionOp) for op in ops))
+        result = _api.evaluate(data[col_s_transformed.str.count("1") > 0])
+        pd.testing.assert_frame_equal(result, df[df["s"].str.count("1") > 0])
 
     def test_graph_fed_scalar_operand_folds_to_const(self):
         # Map extraction inlines a known scalar operand before predicate folding,

@@ -13,9 +13,10 @@ from stratum.optimizer._optimize import OptConfig, logical_optimize, optimize
 from stratum.optimizer.logical._base import IndexEffect, OperandRef, OutputType
 from stratum.optimizer.logical._column_expr import BinOpExpr, Const, OperandLeaf, UFUNCS, WhereExpr
 from stratum.optimizer.logical._combine_ops import AssignOp, CombineOp, ConcatOp
-from stratum.optimizer.logical._map_ops import ExpressionMapOp, MapOp
+from stratum.optimizer.logical._map_ops import ApplyUDFOp, ExpressionMapOp, MapOp
 from stratum.optimizer.logical._projection_ops import ColumnProjectionOp
 from stratum.optimizer.physical._impl_selection import get_implementation_selector
+from stratum.optimizer.physical._representation import FrameLib, frame_lib
 from stratum.runtime._scheduler import SequentialScheduler
 
 
@@ -66,11 +67,11 @@ def test_map_chains_keep_intermediate_dependencies():
 
 
 def test_maps_do_not_require_an_originating_frame():
-    ops, result = evaluate(lambda df: df["a"].apply(lambda x: x + 1) * 2)
+    ops, result = evaluate(lambda df: df["a"].rename("z") * 2)
     mapped = next(op for op in ops if isinstance(op, ExpressionMapOp))
     assert len(mapped.inputs) == 1
     assert not isinstance(mapped.inputs[0], ColumnProjectionOp)
-    pd.testing.assert_series_equal(result, (FRAME["a"] + 1) * 2)
+    pd.testing.assert_series_equal(result, FRAME["a"].rename("z") * 2)
 
 
 def test_where_keeps_all_three_inputs():
@@ -214,3 +215,22 @@ def test_disabling_expression_maps_keeps_assignment_explicit():
         ops = logical(lambda df: df.assign(c=df["a"] + 2))
     assert not any(isinstance(op, ExpressionMapOp) for op in ops)
     assert any(isinstance(op, AssignOp) for op in ops)
+
+
+@pytest.mark.parametrize("build", [
+    lambda df: df["b"].apply(lambda value: pd.Series({"a": value, "b": value * 2})),
+    lambda df: df[["b"]].apply(lambda column: column.sum()),
+    lambda df: df["b"].apply(lambda value: value + 1),
+])
+@pytest.mark.parametrize("selector", ["default", "greedy"])
+def test_opaque_apply_preserves_pandas_result_shape(build, selector):
+    original = FRAME.copy(deep=True)
+    ops, result = evaluate(build, selector)
+    [called] = [op for op in ops if isinstance(op, ApplyUDFOp)]
+    assert called.output_type is OutputType.UNKNOWN
+    assert called.index_effect is IndexEffect.NEW
+    assert frame_lib(called) is FrameLib.PANDAS
+    expected = build(FRAME)
+    check = pd.testing.assert_frame_equal if isinstance(expected, pd.DataFrame) else pd.testing.assert_series_equal
+    check(result, expected)
+    pd.testing.assert_frame_equal(FRAME, original)

@@ -649,7 +649,7 @@ class TestSchemaPropagation(unittest.TestCase):
         # a UDF yields an unknown schema; a downstream drop (normally a known
         # column-changing op) can't recover columns from it -> stays unknown.
         dag = st.as_data_op(self.df).apply(lambda c: c + 1).drop(columns=["z"])
-        op = _schema_op(dag, DropOp)
+        op = _schema_op(dag, MethodCallOp)
         self.assertIsNone(op.output_schema)
 
     # --- datetime fields (.dt.year, ...) ---------------------------------
@@ -937,7 +937,8 @@ class TestSchemaPropagation(unittest.TestCase):
         for method in ("extract", "extractall", "get_dummies", "partition",
                        "rpartition", "split", "rsplit", "cat"):
             with self.subTest(method=method):
-                op = ExpressionMapOp(StrExpr(OperandLeaf(OperandRef(0)), method=method))
+                op = ExpressionMapOp(StrExpr(OperandLeaf(OperandRef(0)), method=method,
+                                            params={"expand": True}))
                 op.inputs = [_stub(pl.Schema({"s": pl.String}))]
                 op.propagate_output_schema()
                 self.assertIsNone(op.output_schema)
@@ -949,7 +950,7 @@ class TestSchemaPropagation(unittest.TestCase):
             with self.subTest(method=method):
                 func = getattr(col.str, method)
                 result = None
-                for args in ((), ("a",), (1,), ("a", "b")):
+                for args in ((), ("a",), (1,), ("a", "b"), ("NFKC",), ({},)):
                     try:
                         result = func(*args)
                         break

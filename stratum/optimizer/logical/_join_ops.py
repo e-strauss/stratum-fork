@@ -3,17 +3,17 @@ from collections.abc import Sequence
 import pandas as pd
 
 from stratum.optimizer.logical._base import IndexEffect
+from stratum.optimizer.logical._combine_ops import CombineOp
 from stratum.optimizer.logical._ops import OperandRef, OutputType, MethodCallOp, Op, substitute_op
 from stratum.optimizer.logical import _schema
 
 
-class JoinOp(Op):
+class JoinOp(CombineOp):
     """Logical join that combines both sides.
 
     The filtering joins (semi/anti) add no columns and so are a different
-    operator: :class:`FilteringJoinOp`, in the same ``Join`` family.
+    operator: :class:`FilteringJoinOp`, in the same ``Combine`` family.
     """
-    logical_family = "Join"
     fields = ["how", "left_on", "right_on", "left_index", "right_index", "suffixes"]
     cacheable = True
 
@@ -28,7 +28,7 @@ class JoinOp(Op):
         inputs: list[Op] | None = None,
         outputs: list[Op] | None = None,
     ):
-        super().__init__(name="", inputs=inputs, outputs=outputs)
+        super().__init__(name=f"{how} join", inputs=inputs, outputs=outputs)
         if how in ("semi", "anti"):
             raise ValueError(f"how={how!r} is a filtering join: use FilteringJoinOp.")
         self.how = how
@@ -106,7 +106,7 @@ class JoinOp(Op):
         return {lhs for lhs, rhs in zip(left_on, right_on) if lhs == rhs}
 
 
-class FilteringJoinOp(Op):
+class FilteringJoinOp(CombineOp):
     """Semi or anti join: keeps the left rows that do (``anti=False``) or do not
     (``anti=True``) have a key match on the right, and adds no columns.
 
@@ -116,7 +116,6 @@ class FilteringJoinOp(Op):
     column; that is what an ``isin`` against a column produces. Missing keys
     match each other.
     """
-    logical_family = "Join"
     fields = ["anti", "left_on", "right_on"]
     # Keeps the left rows' labels, and matches key values, never labels.
     index_effect = IndexEffect.NEW
