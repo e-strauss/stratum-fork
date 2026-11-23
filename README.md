@@ -192,6 +192,10 @@ Entry details include operator labels, sizes, hits and the job that added them.
 Cache events are sampled at most once a second, with every job boundary and cache
 clear retained. Evicted entries leave no per-key history behind.
 
+The [server client notebook](examples/server/server_client.ipynb) demonstrates
+reuse across searches and queries. The [NYC trajectory notebook](examples/server/nyc_trajectory.ipynb)
+compares plain skrub with server runs using and bypassing the cache.
+
 ## Developer Instructions
 
 ### Running the Tests
@@ -203,6 +207,18 @@ full test suite:
 maturin develop --release --extras test,cpu,hardware
 python -m pytest -v tests
 ```
+
+Replay the recorded NYC and forest-cover pipelines on generated local data with
+the default implementation selector:
+
+```bash
+python -m pytest tests/applications/trajectories -v
+```
+
+Each trajectory shares one in-memory cache across its pipelines and checks
+reused reads, fold reuse, and scores against uncached runs. Add
+`--trajectory-selector=greedy` to exercise greedy selection. The NYC neural-network
+pipeline requires the `cpu` or `cu126` extra in addition to `test`.
 
 ---
 
