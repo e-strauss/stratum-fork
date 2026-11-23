@@ -8,6 +8,7 @@ from .logical.rewrites._choice_unrolling import choice_unrolling
 from .logical.rewrites._schema_propagation import propagate_output_schema
 from .logical.rewrites._selection_extraction import extract_mask_selections
 from .logical.rewrites._expressions import simplify_expressions
+from .logical.rewrites._projection_rewrites import simplify_projected_assignments
 from .logical._dataframe_ops import extract_dataframe_op, add_splitting_op
 from .logical.rewrites._literal_inlining import literal_inlining
 from .logical._numeric_ops import extract_numeric_op
@@ -219,6 +220,7 @@ def logical_optimize(dag_root: DataOp, config: OptConfig, env: dict = None,
         propagate_output_schema(root)
     if config.algebraic_rewrites:
         root = simplify_expressions(root, config.algebraic_rewrite_config)
+        root = simplify_projected_assignments(root)
 
     # Run relational rewrites after expression rewrites and CSE so a converted
     # join can reuse the build-side operator shared by other consumers.

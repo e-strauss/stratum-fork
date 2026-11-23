@@ -8,6 +8,7 @@ from stratum.optimizer._optimize import OptConfig, logical_optimize
 from stratum.optimizer.logical.rewrites._schema_propagation import propagate_output_schema
 from stratum.optimizer.logical._combine_ops import AssignOp
 from stratum.optimizer.logical._map_ops import ExpressionMapOp
+from stratum.optimizer.logical._metadata_ops import RenameOp
 from stratum.optimizer.logical._projection_ops import ColumnProjectionOp, DropOp
 from stratum.optimizer.logical._source_ops import InMemoryFrameOp
 from .test_dataframe_ops import force_polars, optimize
@@ -133,3 +134,23 @@ def test_final_propagation_flags_a_stale_schema():
     root.output_schema = pl.Schema({"stale": pl.Int64})
     with pytest.raises(AssertionError, match="stale output schema"):
         propagate_output_schema(root, check=True)
+
+
+def test_assignment_of_only_selected_column_keeps_frame_and_name(polars):
+    original = FRAME.copy(deep=True)
+    ops = _check(lambda df: df.assign(z=df["col1"] * 2)[["z"]])
+    assert not _of(ops, AssignOp)
+    assert isinstance(ops[-1], RenameOp)
+    assert ops[-1].as_frame and ops[-1].label == ("z",)
+    pd.testing.assert_frame_equal(FRAME, original)
+
+
+@pytest.mark.parametrize("build", [
+    lambda df: df.assign(z=1)[["z"]],
+    lambda df: df.assign(z=[1, 2, 3])[["z"]],
+    lambda df: df.assign(z=df["col1"].sort_values(ascending=False))[["z"]],
+    lambda df: df.assign(z=df[df["col1"] > 1]["col1"])[["z"]],
+])
+def test_projected_assignment_keeps_broadcasting_and_alignment(build):
+    ops = _check(build)
+    assert _of(ops, AssignOp)

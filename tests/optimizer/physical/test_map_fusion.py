@@ -97,6 +97,12 @@ def test_standalone_chain_compiles_to_one_select():
     pd.testing.assert_series_equal(result, (FRAME["a"] + 2) * 3)
 
 
+@pytest.mark.parametrize("fused", [False, True])
+def test_projected_assignment_returns_a_named_frame(fused):
+    _, result = execute(lambda df: df.assign(z=df["a"] * 2)[["z"]], fused=fused)
+    pd.testing.assert_frame_equal(result, (FRAME["a"] * 2).to_frame("z"))
+
+
 @pytest.mark.parametrize("name", ["*", "^a.*$", ""])
 @pytest.mark.parametrize("path,fused", [
     ("standalone", False), ("standalone", True),
